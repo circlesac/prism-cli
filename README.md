@@ -56,6 +56,15 @@ callback, derives the ChatGPT account ID and display name from the returned
 tokens, and upserts that account directly into the selected Vault namespace.
 Provider tokens are not written to Prism KV or a local Prism credential store.
 
+First-party production profiles use `vault.circles.ac`. Profiles configured
+with `api-dev.circles.ac` and `auth-dev.circles.ac` use the separate development
+Vault at `vault.crcl.es`:
+
+```sh
+prism chatgpt auth login --profile dev-personal
+prism chatgpt auth list --profile dev-personal
+```
+
 ChatGPT account selection remains automatic in the Worker, so the CLI
 intentionally has no `set-default` command.
 
