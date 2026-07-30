@@ -67,6 +67,5 @@ go vet -mod=vendor ./...
 go build -mod=vendor -o prism .
 ```
 
-The official Circles Go credential provider is vendored from
-`github.com/circlesac/api/packages/credentials-go` so this public repository and
-its releases build without access to the private API monorepo.
+The official Circles Go credential provider is pinned and vendored from the
+public `github.com/circlesac/credentials-go` module for reproducible releases.

@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	credentials "github.com/circlesac/api/packages/credentials-go"
+	credentials "github.com/circlesac/credentials-go"
 	"github.com/circlesac/prism-cli/internal/chatgpt"
 	"github.com/circlesac/prism-cli/internal/vault"
 )
