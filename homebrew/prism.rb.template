@@ -1,0 +1,36 @@
+class Prism < Formula
+  desc "Manage provider accounts for Prism"
+  homepage "https://github.com/circlesac/prism-cli"
+  version "VERSION_PLACEHOLDER"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/circlesac/prism-cli/releases/download/v#{version}/prism-darwin-arm64.tar.gz"
+      sha256 "SHA_DARWIN_ARM64"
+    end
+    on_intel do
+      url "https://github.com/circlesac/prism-cli/releases/download/v#{version}/prism-darwin-amd64.tar.gz"
+      sha256 "SHA_DARWIN_AMD64"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/circlesac/prism-cli/releases/download/v#{version}/prism-linux-arm64.tar.gz"
+      sha256 "SHA_LINUX_ARM64"
+    end
+    on_intel do
+      url "https://github.com/circlesac/prism-cli/releases/download/v#{version}/prism-linux-amd64.tar.gz"
+      sha256 "SHA_LINUX_AMD64"
+    end
+  end
+
+  def install
+    bin.install "prism"
+  end
+
+  test do
+    system "#{bin}/prism", "--version"
+  end
+end
