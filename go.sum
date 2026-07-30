@@ -1,2 +1,2 @@
-github.com/circlesac/api/packages/credentials-go v0.0.0-20260730060516-fc10e82f03b1 h1:YK7kwUFrNwGdHmrWcF5duxnBNdNulqBQprRBPf3dt48=
-github.com/circlesac/api/packages/credentials-go v0.0.0-20260730060516-fc10e82f03b1/go.mod h1:fgKk01N+D+LYuiXMUgGxs2mFEkpak7IFM6QYEsday58=
+github.com/circlesac/credentials-go v1.0.0 h1:ByBRZLz81nY2M7eSN5qMG9mlQv5A/U97cBIlf7cGXKg=
+github.com/circlesac/credentials-go v1.0.0/go.mod h1:XAx2AkAC9i7xsptIVlzWXGXzBPpUR5ORr2IXTnK2Bqc=
