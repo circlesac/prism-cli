@@ -1,9 +1,10 @@
 # Circles credentials for Go
 
 Official Go implementation of the
-[Circles credential-provider contract](../../credentials/SPEC.md). The module
-path is `github.com/circlesac/api/packages/credentials-go` and the package name
-is `credentials`.
+[Circles credential-provider contract](https://github.com/circlesac/credentials-go/blob/main/credentials/SPEC.md).
+The source of truth lives at `packages/credentials-go` in `circlesac/api` and
+is published to the public `github.com/circlesac/credentials-go` module. The
+package name is `credentials`.
 
 ```go
 provider, err := credentials.New()
