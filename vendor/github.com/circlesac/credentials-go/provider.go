@@ -174,7 +174,7 @@ func validateRawProfile(raw rawProfile) error {
 	if err := validateEndpoint(raw.config["auth_url"], "auth_url"); err != nil {
 		return err
 	}
-	if organization := raw.config["org"]; organization != "" && !profileNamePattern.MatchString(organization) {
+	if organization := raw.config["org"]; organization != "" && !organizationPattern.MatchString(organization) {
 		return invalidCredential(fmt.Sprintf("Profile '%s' org is invalid.", raw.name))
 	}
 	hasAPIKey := raw.credentials["api_key"] != ""
@@ -193,9 +193,11 @@ func refreshFailure(profile, message string) error {
 	return credentialError(ErrRefreshFailed, fmt.Sprintf("Profile '%s' %s", profile, message))
 }
 
-func (provider *Provider) profileName() (string, error) {
+// SelectedProfileName returns the profile selected by explicit options,
+// environment variables, shared current-profile metadata, or legacy default.
+func (provider *Provider) SelectedProfileName(ctx context.Context) (string, error) {
 	if provider.options.profile != nil {
-		if err := validateProfileName(*provider.options.profile); err != nil {
+		if err := validateSelectableProfileName(*provider.options.profile); err != nil {
 			return "", err
 		}
 		return *provider.options.profile, nil
@@ -205,13 +207,30 @@ func (provider *Provider) profileName() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if profile == "" {
-		profile = "default"
+	if profile != "" {
+		if err := validateSelectableProfileName(profile); err != nil {
+			return "", err
+		}
+		return profile, nil
 	}
-	if err := validateProfileName(profile); err != nil {
+	current, exists, err := provider.store.readCurrentProfile(ctx)
+	if err != nil {
 		return "", err
 	}
-	return profile, nil
+	if exists {
+		return current, nil
+	}
+	return "default", nil
+}
+
+// CurrentProfile returns the persisted non-secret current-profile selection.
+func (provider *Provider) CurrentProfile(ctx context.Context) (string, bool, error) {
+	return provider.store.readCurrentProfile(ctx)
+}
+
+// SetCurrentProfile makes an existing credential profile the shared default selection.
+func (provider *Provider) SetCurrentProfile(ctx context.Context, profile string) error {
+	return provider.store.setCurrentProfile(ctx, profile)
 }
 
 // Resolve evaluates the shared provider chain.
@@ -227,7 +246,7 @@ func (provider *Provider) Resolve(ctx context.Context) (Credential, error) {
 		return resolvedCredential(*provider.options.explicitCredential, Source{Type: SourceExplicit})
 	}
 	if provider.options.profile != nil {
-		if err := validateProfileName(*provider.options.profile); err != nil {
+		if err := validateSelectableProfileName(*provider.options.profile); err != nil {
 			return Credential{}, err
 		}
 		return provider.resolveProfile(ctx, *provider.options.profile)
@@ -240,7 +259,7 @@ func (provider *Provider) Resolve(ctx context.Context) (Credential, error) {
 	if environmentCredential != "" {
 		return resolvedCredential(environmentCredential, Source{Type: SourceEnvironment})
 	}
-	profile, err := provider.profileName()
+	profile, err := provider.SelectedProfileName(ctx)
 	if err != nil {
 		return Credential{}, err
 	}
@@ -249,7 +268,7 @@ func (provider *Provider) Resolve(ctx context.Context) (Credential, error) {
 
 // GetProfile returns only a selected profile's non-secret settings.
 func (provider *Provider) GetProfile(ctx context.Context) (*StoredProfile, error) {
-	profile, err := provider.profileName()
+	profile, err := provider.SelectedProfileName(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +285,7 @@ func (provider *Provider) Refresh(ctx context.Context) (Credential, error) {
 			return Credential{}, credentialError(ErrRefreshFailed, "An environment credential cannot be refreshed by the shared profile provider.")
 		}
 	}
-	profile, err := provider.profileName()
+	profile, err := provider.SelectedProfileName(ctx)
 	if err != nil {
 		return Credential{}, err
 	}
@@ -289,7 +308,7 @@ func (provider *Provider) UpdateProfile(ctx context.Context, update ProfileUpdat
 		if err := validateEndpoint(update.Config.AuthURL, "auth_url"); err != nil {
 			return err
 		}
-		if update.Config.Org != "" && !profileNamePattern.MatchString(update.Config.Org) {
+		if update.Config.Org != "" && !organizationPattern.MatchString(update.Config.Org) {
 			return invalidCredential("Profile org is invalid.")
 		}
 	}
@@ -319,7 +338,7 @@ func (provider *Provider) UpdateProfile(ctx context.Context, update ProfileUpdat
 			}
 		}
 	}
-	profile, err := provider.profileName()
+	profile, err := provider.SelectedProfileName(ctx)
 	if err != nil {
 		return err
 	}
@@ -328,7 +347,7 @@ func (provider *Provider) UpdateProfile(ctx context.Context, update ProfileUpdat
 
 // DeleteProfile removes the selected canonical profile while retaining migration history.
 func (provider *Provider) DeleteProfile(ctx context.Context) error {
-	profile, err := provider.profileName()
+	profile, err := provider.SelectedProfileName(ctx)
 	if err != nil {
 		return err
 	}

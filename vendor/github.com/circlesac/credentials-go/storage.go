@@ -34,6 +34,11 @@ type profileStore struct {
 	migrated    bool
 }
 
+const (
+	metadataSection   = "__circles__"
+	currentProfileKey = "current_profile"
+)
+
 func environmentValue(options providerOptions, name string) (string, bool) {
 	if options.env != nil {
 		value, exists := options.env[name]
@@ -232,7 +237,7 @@ func readMigrationMarker(path string) (map[string]bool, error) {
 	}
 	profiles := map[string]bool{}
 	for _, profile := range strings.Fields(string(contents)) {
-		if err := validateProfileName(profile); err != nil {
+		if err := validateSelectableProfileName(profile); err != nil {
 			return nil, err
 		}
 		profiles[profile] = true
@@ -257,7 +262,7 @@ func legacyProfileName(key string) (string, error) {
 	if len(match) == 2 {
 		profile = match[1]
 	}
-	if err := validateProfileName(profile); err != nil {
+	if err := validateSelectableProfileName(profile); err != nil {
 		return "", err
 	}
 	return profile, nil
@@ -403,7 +408,7 @@ func (store *profileStore) migrateLegacyProfiles(ctx context.Context) error {
 	credentialsChanged := false
 	markerChanged := false
 	for profile := range profiles {
-		if err := validateProfileName(profile); err != nil {
+		if err := validateSelectableProfileName(profile); err != nil {
 			return err
 		}
 		if migratedProfiles[profile] {
@@ -466,7 +471,7 @@ func (store *profileStore) migrateLegacyProfiles(ctx context.Context) error {
 }
 
 func (store *profileStore) readRawProfile(ctx context.Context, profile string) (rawProfile, error) {
-	if err := validateProfileName(profile); err != nil {
+	if err := validateSelectableProfileName(profile); err != nil {
 		return rawProfile{}, err
 	}
 	if err := store.migrateLegacyProfiles(ctx); err != nil {
@@ -519,7 +524,7 @@ func (store *profileStore) readProfile(ctx context.Context, profile string) (*St
 }
 
 func (store *profileStore) updateProfile(ctx context.Context, profile string, update ProfileUpdate) error {
-	if err := validateProfileName(profile); err != nil {
+	if err := validateSelectableProfileName(profile); err != nil {
 		return err
 	}
 	if err := store.migrateLegacyProfiles(ctx); err != nil {
@@ -574,6 +579,9 @@ func (store *profileStore) updateProfile(ctx context.Context, profile string, up
 }
 
 func (store *profileStore) replaceOAuthCredentials(profile, accessToken, refreshToken string) error {
+	if err := validateSelectableProfileName(profile); err != nil {
+		return err
+	}
 	credentialsData, err := readINIFile(store.paths.CredentialsFile)
 	if err != nil {
 		return storageError("Credential storage failed while persisting refreshed credentials.", err)
@@ -589,7 +597,7 @@ func (store *profileStore) replaceOAuthCredentials(profile, accessToken, refresh
 }
 
 func (store *profileStore) deleteProfile(ctx context.Context, profile string) error {
-	if err := validateProfileName(profile); err != nil {
+	if err := validateSelectableProfileName(profile); err != nil {
 		return err
 	}
 	if err := store.migrateLegacyProfiles(ctx); err != nil {
@@ -607,6 +615,12 @@ func (store *profileStore) deleteProfile(ctx context.Context, profile string) er
 	credentialsData, err := readINIFile(store.paths.CredentialsFile)
 	if err != nil {
 		return storageError("Credential storage failed while deleting a profile.", err)
+	}
+	if configData[metadataSection][currentProfileKey] == profile {
+		delete(configData[metadataSection], currentProfileKey)
+		if len(configData[metadataSection]) == 0 {
+			delete(configData, metadataSection)
+		}
 	}
 	delete(configData, profile)
 	delete(credentialsData, profile)
@@ -633,6 +647,63 @@ func (store *profileStore) clearProfiles(ctx context.Context) error {
 	}
 	if err := atomicWriteINI(store.paths.CredentialsFile, iniData{}); err != nil {
 		return storageError("Credential storage failed while clearing profiles.", err)
+	}
+	return nil
+}
+
+func (store *profileStore) readCurrentProfile(ctx context.Context) (string, bool, error) {
+	if err := store.migrateLegacyProfiles(ctx); err != nil {
+		return "", false, err
+	}
+	configData, err := readINIFile(store.paths.ConfigFile)
+	if err != nil {
+		return "", false, storageError("Credential storage failed while reading the current profile.", err)
+	}
+	metadata := configData[metadataSection]
+	if metadata == nil {
+		return "", false, nil
+	}
+	for key := range metadata {
+		if key != currentProfileKey {
+			return "", false, credentialError(ErrInvalidCredential, fmt.Sprintf("Shared config metadata contains an unsupported '%s' field.", key))
+		}
+	}
+	profile := metadata[currentProfileKey]
+	if profile == "" {
+		return "", false, nil
+	}
+	if err := validateSelectableProfileName(profile); err != nil {
+		return "", false, err
+	}
+	return profile, true, nil
+}
+
+func (store *profileStore) setCurrentProfile(ctx context.Context, profile string) error {
+	if err := validateSelectableProfileName(profile); err != nil {
+		return err
+	}
+	if err := store.migrateLegacyProfiles(ctx); err != nil {
+		return err
+	}
+	release, err := store.acquireLock(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	configData, err := readINIFile(store.paths.ConfigFile)
+	if err != nil {
+		return storageError("Credential storage failed while setting the current profile.", err)
+	}
+	credentialsData, err := readINIFile(store.paths.CredentialsFile)
+	if err != nil {
+		return storageError("Credential storage failed while setting the current profile.", err)
+	}
+	if len(credentialsData[profile]) == 0 {
+		return credentialError(ErrCredentialNotFound, fmt.Sprintf("Cannot select missing credential profile '%s'.", profile))
+	}
+	configData[metadataSection] = map[string]string{currentProfileKey: profile}
+	if err := atomicWriteINI(store.paths.ConfigFile, configData); err != nil {
+		return storageError("Credential storage failed while setting the current profile.", err)
 	}
 	return nil
 }

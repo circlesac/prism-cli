@@ -11,13 +11,24 @@ import (
 type iniData map[string]map[string]string
 
 var (
-	profileNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
-	iniKeyPattern      = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
+	profileNamePattern  = regexp.MustCompile(`^[A-Za-z0-9._+@-]+$`)
+	organizationPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	iniKeyPattern       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 )
 
 func validateProfileName(profile string) error {
 	if !profileNamePattern.MatchString(profile) {
-		return credentialError(ErrInvalidCredential, "Profile names may contain only letters, digits, '.', '_', and '-'.")
+		return credentialError(ErrInvalidCredential, "Profile names may contain only letters, digits, '.', '_', '-', '+', and '@'.")
+	}
+	return nil
+}
+
+func validateSelectableProfileName(profile string) error {
+	if err := validateProfileName(profile); err != nil {
+		return err
+	}
+	if profile == "__circles__" {
+		return credentialError(ErrInvalidCredential, "Profile name '__circles__' is reserved for shared configuration metadata.")
 	}
 	return nil
 }

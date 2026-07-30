@@ -25,7 +25,8 @@ Prism uses the shared Circles credential chain:
 1. an explicitly selected `--profile`;
 2. `CIRCLES_AUTH_TOKEN`;
 3. `CIRCLES_PROFILE`;
-4. the `default` profile in `~/.crcl`.
+4. the shared current profile selected by `crcl login`;
+5. the legacy `default` profile in `~/.crcl`.
 
 `CRCL_AUTH_TOKEN` and `CRCL_PROFILE` remain compatibility aliases. `crcl login`
 can provision a shared profile, but the `crcl` executable is not required when
