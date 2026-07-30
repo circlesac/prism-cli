@@ -85,3 +85,56 @@ func TestCredentialValueIsNotAcceptedAsCommandLineOption(t *testing.T) {
 		t.Fatal("rejected credential value was echoed in the error")
 	}
 }
+
+func TestVaultURLFollowsTheCirclesProfileStage(t *testing.T) {
+	tests := []struct {
+		name    string
+		profile *credentials.StoredProfile
+		want    string
+		wantErr bool
+	}{
+		{name: "no profile", want: "https://vault.circles.ac"},
+		{
+			name: "production",
+			profile: &credentials.StoredProfile{Name: "prod", Config: credentials.ProfileConfig{
+				APIURL: "https://api.circles.ac", AuthURL: "https://auth.circles.ac",
+			}},
+			want: "https://vault.circles.ac",
+		},
+		{
+			name: "development",
+			profile: &credentials.StoredProfile{Name: "dev", Config: credentials.ProfileConfig{
+				APIURL: "https://api-dev.circles.ac", AuthURL: "https://auth-dev.circles.ac",
+			}},
+			want: "https://vault.crcl.es",
+		},
+		{
+			name: "mixed stages",
+			profile: &credentials.StoredProfile{Name: "mixed", Config: credentials.ProfileConfig{
+				APIURL: "https://api.circles.ac", AuthURL: "https://auth-dev.circles.ac",
+			}},
+			wantErr: true,
+		},
+		{
+			name: "unknown endpoint",
+			profile: &credentials.StoredProfile{Name: "custom", Config: credentials.ProfileConfig{
+				APIURL: "https://api.example.com",
+			}},
+			wantErr: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := vaultURLForProfile(test.profile)
+			if test.wantErr {
+				if err == nil {
+					t.Fatalf("vaultURLForProfile() = %q, want error", got)
+				}
+				return
+			}
+			if err != nil || got != test.want {
+				t.Fatalf("vaultURLForProfile() = %q, %v; want %q", got, err, test.want)
+			}
+		})
+	}
+}

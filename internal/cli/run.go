@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 
 	credentials "github.com/circlesac/credentials-go"
@@ -71,8 +72,19 @@ func Run(
 	if err != nil {
 		return err
 	}
+	vaultURL := "https://vault.circles.ac"
+	if credential.Source.Type == credentials.SourceProfile {
+		profile, err := provider.GetProfile(ctx)
+		if err != nil {
+			return err
+		}
+		vaultURL, err = vaultURLForProfile(profile)
+		if err != nil {
+			return err
+		}
+	}
 	vaultClient := vault.Client{
-		BaseURL: "https://vault.circles.ac",
+		BaseURL: vaultURL,
 		Token:   credential.Value,
 		Org:     options.org,
 	}
@@ -118,6 +130,39 @@ func Run(
 	}
 	_ = stderr
 	return nil
+}
+
+func vaultURLForProfile(profile *credentials.StoredProfile) (string, error) {
+	if profile == nil {
+		return "https://vault.circles.ac", nil
+	}
+	stage := ""
+	for _, endpoint := range []string{profile.Config.APIURL, profile.Config.AuthURL} {
+		if endpoint == "" {
+			continue
+		}
+		parsed, err := url.Parse(endpoint)
+		if err != nil {
+			return "", fmt.Errorf("profile %q has an invalid Circles endpoint", profile.Name)
+		}
+		detected := ""
+		switch strings.ToLower(parsed.Hostname()) {
+		case "api.circles.ac", "auth.circles.ac":
+			detected = "production"
+		case "api-dev.circles.ac", "auth-dev.circles.ac":
+			detected = "development"
+		default:
+			return "", fmt.Errorf("profile %q uses an unsupported Circles endpoint", profile.Name)
+		}
+		if stage != "" && stage != detected {
+			return "", fmt.Errorf("profile %q mixes production and development Circles endpoints", profile.Name)
+		}
+		stage = detected
+	}
+	if stage == "development" {
+		return "https://vault.crcl.es", nil
+	}
+	return "https://vault.circles.ac", nil
 }
 
 func parseCommonOptions(args []string) (commonOptions, []string, error) {
