@@ -1,0 +1,173 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - run: go test -mod=vendor -race ./...
+      - run: go vet -mod=vendor ./...
+
+      - name: Verify generated files
+        run: |
+          test -z "$(gofmt -l .)"
+          git diff --exit-code
+
+  version:
+    needs: checks
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate version
+        id: bump
+        run: |
+          VERSION=$(npx --yes @circlesac/oneup version --source git --target version.go | tail -1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: versioned-files
+          path: version.go
+
+  build:
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: macos-latest
+            goos: darwin
+            goarch: arm64
+            name: prism-darwin-arm64
+          - runner: macos-latest
+            goos: darwin
+            goarch: amd64
+            name: prism-darwin-amd64
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            name: prism-linux-arm64
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            name: prism-linux-amd64
+          - runner: windows-latest
+            goos: windows
+            goarch: amd64
+            name: prism-windows-amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: versioned-files
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: go build -mod=vendor -trimpath -ldflags="-s -w" -o prism${{ matrix.goos == 'windows' && '.exe' || '' }} .
+
+      - name: Package Unix archive
+        if: matrix.goos != 'windows'
+        run: tar czf ${{ matrix.name }}.tar.gz prism
+
+      - name: Package Windows archive
+        if: matrix.goos == 'windows'
+        run: 7z a ${{ matrix.name }}.zip prism.exe
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}.*
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate checksums
+        run: |
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) -print0 |
+            sort -z |
+            xargs -0 shasum -a 256 > checksums.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            checksums.txt
+            bin/install.sh
+
+  publish-homebrew:
+    needs: [version, release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Update Homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          SHA_DARWIN_ARM64=$(shasum -a 256 artifacts/prism-darwin-arm64/*.tar.gz | cut -d' ' -f1)
+          SHA_DARWIN_AMD64=$(shasum -a 256 artifacts/prism-darwin-amd64/*.tar.gz | cut -d' ' -f1)
+          SHA_LINUX_ARM64=$(shasum -a 256 artifacts/prism-linux-arm64/*.tar.gz | cut -d' ' -f1)
+          SHA_LINUX_AMD64=$(shasum -a 256 artifacts/prism-linux-amd64/*.tar.gz | cut -d' ' -f1)
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/circlesac/homebrew-tap.git"
+          cd homebrew-tap
+          cp ../homebrew/prism.rb.template Formula/prism.rb
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" Formula/prism.rb
+          sed -i "s/SHA_DARWIN_ARM64/${SHA_DARWIN_ARM64}/g" Formula/prism.rb
+          sed -i "s/SHA_DARWIN_AMD64/${SHA_DARWIN_AMD64}/g" Formula/prism.rb
+          sed -i "s/SHA_LINUX_ARM64/${SHA_LINUX_ARM64}/g" Formula/prism.rb
+          sed -i "s/SHA_LINUX_AMD64/${SHA_LINUX_AMD64}/g" Formula/prism.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/prism.rb
+          git diff --cached --quiet && exit 0
+          git commit -m "Update prism to ${VERSION}"
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin main; then
+              exit 0
+            fi
+            printf 'push attempt %s failed\n' "$attempt" >&2
+          done
+          exit 1
