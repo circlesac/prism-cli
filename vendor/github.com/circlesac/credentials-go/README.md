@@ -22,3 +22,5 @@ request.Header.Set("Authorization", "Bearer "+credential.Value)
 The provider reads canonical and compatibility environment variables and named
 profiles, migrates legacy `crcl` profiles without deleting them, refreshes OAuth
 tokens directly, and uses atomic credential writes with a cross-process lock.
+`SetCurrentProfile` shares the selected profile across Circles clients while
+explicit and environment-selected profiles keep precedence.

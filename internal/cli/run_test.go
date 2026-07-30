@@ -69,6 +69,50 @@ func TestPublicCredentialProviderSupportsHeadlessUseWithoutDiskWrites(t *testing
 	}
 }
 
+func TestPublicCredentialProviderUsesTheSharedCurrentProfile(t *testing.T) {
+	home := t.TempDir()
+	credentialDirectory := filepath.Join(home, ".crcl")
+	if err := os.MkdirAll(credentialDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(credentialDirectory, "config"),
+		[]byte("[__circles__]\ncurrent_profile = dev:yg@melten.ai\n\n[dev:yg@melten.ai]\napi_url = https://api-dev.circles.ac\nauth_url = https://auth-dev.circles.ac\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(credentialDirectory, "credentials"),
+		[]byte("[default]\napi_key = default-key\n\n[dev:yg@melten.ai]\napi_key = melten-key\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := credentials.New(
+		credentials.WithHomeDir(home),
+		credentials.WithEnvironment(map[string]string{}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := provider.Resolve(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credential.Value != "melten-key" || credential.Source != (credentials.Source{Type: credentials.SourceProfile, Profile: "dev:yg@melten.ai"}) {
+		t.Fatalf("credential = %#v", credential)
+	}
+	profile, err := provider.GetProfile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	vaultURL, err := vaultURLForProfile(profile)
+	if err != nil || vaultURL != "https://vault.crcl.es" {
+		t.Fatalf("vault URL = %q, %v", vaultURL, err)
+	}
+}
+
 func TestCredentialValueIsNotAcceptedAsCommandLineOption(t *testing.T) {
 	secret := "command-line-secret"
 	err := Run(
