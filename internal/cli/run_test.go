@@ -77,14 +77,14 @@ func TestPublicCredentialProviderUsesTheSharedCurrentProfile(t *testing.T) {
 	}
 	if err := os.WriteFile(
 		filepath.Join(credentialDirectory, "config"),
-		[]byte("[__circles__]\ncurrent_profile = yg@melten.ai\n\n[yg@melten.ai]\napi_url = https://api-dev.circles.ac\nauth_url = https://auth-dev.circles.ac\n"),
+		[]byte("[__circles__]\ncurrent_profile = dev:yg@melten.ai\n\n[dev:yg@melten.ai]\napi_url = https://api-dev.circles.ac\nauth_url = https://auth-dev.circles.ac\n"),
 		0o600,
 	); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
 		filepath.Join(credentialDirectory, "credentials"),
-		[]byte("[default]\napi_key = default-key\n\n[yg@melten.ai]\napi_key = melten-key\n"),
+		[]byte("[default]\napi_key = default-key\n\n[dev:yg@melten.ai]\napi_key = melten-key\n"),
 		0o600,
 	); err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestPublicCredentialProviderUsesTheSharedCurrentProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if credential.Value != "melten-key" || credential.Source != (credentials.Source{Type: credentials.SourceProfile, Profile: "yg@melten.ai"}) {
+	if credential.Value != "melten-key" || credential.Source != (credentials.Source{Type: credentials.SourceProfile, Profile: "dev:yg@melten.ai"}) {
 		t.Fatalf("credential = %#v", credential)
 	}
 	profile, err := provider.GetProfile(context.Background())

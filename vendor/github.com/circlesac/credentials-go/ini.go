@@ -11,14 +11,14 @@ import (
 type iniData map[string]map[string]string
 
 var (
-	profileNamePattern  = regexp.MustCompile(`^[A-Za-z0-9._+@-]+$`)
+	profileNamePattern  = regexp.MustCompile(`^[A-Za-z0-9._+@:-]+$`)
 	organizationPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	iniKeyPattern       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 )
 
 func validateProfileName(profile string) error {
 	if !profileNamePattern.MatchString(profile) {
-		return credentialError(ErrInvalidCredential, "Profile names may contain only letters, digits, '.', '_', '-', '+', and '@'.")
+		return credentialError(ErrInvalidCredential, "Profile names may contain only letters, digits, '.', '_', '-', '+', '@', and ':'.")
 	}
 	return nil
 }
