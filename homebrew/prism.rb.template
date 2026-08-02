@@ -4,6 +4,8 @@ class Prism < Formula
   version "VERSION_PLACEHOLDER"
   license "MIT"
 
+  depends_on "cvlt"
+
   on_macos do
     on_arm do
       url "https://github.com/circlesac/prism-cli/releases/download/v#{version}/prism-darwin-arm64.tar.gz"
