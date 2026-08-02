@@ -93,9 +93,16 @@ func ClassifyCredential(value string) (Kind, *time.Time, error) {
 	if headerErr != nil || payloadErr != nil || json.Unmarshal(headerJSON, &header) != nil || json.Unmarshal(payloadJSON, &payload) != nil || header == nil || payload == nil {
 		return KindAPIKey, nil, nil
 	}
+	// No real issuer emits unsigned tokens, and circles-issued JWTs always
+	// carry an expiry. Accepting either turned store pollution (an alg:none
+	// test fixture without exp) into a credential that never expired.
+	algorithm, hasAlgorithm := header["alg"].(string)
+	if !hasAlgorithm || strings.EqualFold(algorithm, "none") {
+		return "", nil, invalidCredential("JWT is not signed.")
+	}
 	expiration, exists := payload["exp"]
 	if !exists {
-		return KindJWT, nil, nil
+		return "", nil, invalidCredential("JWT has no expiration claim.")
 	}
 	numericExpiration, ok := expiration.(float64)
 	if !ok || math.IsNaN(numericExpiration) || math.IsInf(numericExpiration, 0) {
@@ -385,15 +392,20 @@ func (provider *Provider) resolveProfile(ctx context.Context, profile string) (C
 		return credential, nil
 	}
 	if accessToken := raw.credentials["access_token"]; accessToken != "" {
+		// An invalid stored access token (unsigned, malformed, no expiry) is
+		// treated like an expired one: fall through to the refresh path so a
+		// polluted store heals itself instead of wedging every caller.
 		credential, err := resolvedCredential(accessToken, source)
-		if err != nil {
+		if err != nil && !IsError(err, ErrInvalidCredential) {
 			return Credential{}, err
 		}
-		if credential.Kind != KindJWT {
-			return Credential{}, invalidCredential(fmt.Sprintf("Profile '%s' access_token must be a JWT.", profile))
-		}
-		if !isExpired(credential, provider.options.now()) {
-			return credential, nil
+		if err == nil {
+			if credential.Kind != KindJWT {
+				return Credential{}, invalidCredential(fmt.Sprintf("Profile '%s' access_token must be a JWT.", profile))
+			}
+			if !isExpired(credential, provider.options.now()) {
+				return credential, nil
+			}
 		}
 	}
 	refreshToken := raw.credentials["refresh_token"]

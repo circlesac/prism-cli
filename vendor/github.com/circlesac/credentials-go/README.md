@@ -1,10 +1,12 @@
 # Circles credentials for Go
 
 Official Go implementation of the
-[Circles credential-provider contract](https://github.com/circlesac/credentials-go/blob/main/credentials/SPEC.md).
+[Circles credential-provider contract](https://github.com/circlesac/crcl-cli/blob/main/docs/credentials/SPEC.md).
 The source of truth lives at `packages/credentials-go` in `circlesac/api` and
 is published to the public `github.com/circlesac/credentials-go` module. The
-package name is `credentials`.
+package name is `credentials`. The contract cases are mirrored into this public
+module so `go test` verifies the exact language-neutral cases shipped by
+`crcl-cli`.
 
 ```go
 provider, err := credentials.New()
