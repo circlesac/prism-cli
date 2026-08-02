@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strings"
 
 	credentials "github.com/circlesac/credentials-go"
@@ -72,21 +73,25 @@ func Run(
 	if err != nil {
 		return err
 	}
-	vaultURL := "https://vault.circles.ac"
+	selectedProfile := ""
 	if credential.Source.Type == credentials.SourceProfile {
 		profile, err := provider.GetProfile(ctx)
 		if err != nil {
 			return err
 		}
-		vaultURL, err = vaultURLForProfile(profile)
-		if err != nil {
+		if _, err = vaultURLForProfile(profile); err != nil {
 			return err
 		}
+		selectedProfile = credential.Source.Profile
 	}
+	bridge, err := vault.StartConnectBridge(ctx, selectedProfile, options.org, os.Stdin, stderr)
+	if err != nil {
+		return err
+	}
+	defer bridge.Close()
 	vaultClient := vault.Client{
-		BaseURL: vaultURL,
-		Token:   credential.Value,
-		Org:     options.org,
+		BaseURL: bridge.Host,
+		Token:   bridge.Token,
 	}
 
 	switch command {
