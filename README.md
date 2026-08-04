@@ -87,4 +87,4 @@ go build -mod=vendor -o prism .
 ```
 
 The official Circles Go credential provider is pinned and vendored from the
-public `github.com/circlesac/credentials-go` module for reproducible releases.
+public `go.circles.ac/credentials` module for reproducible releases.
