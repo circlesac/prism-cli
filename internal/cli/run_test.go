@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	credentials "go.circles.ac/credentials"
+	credentials "github.com/circlesac/credentials-go"
 )
 
 func TestHelpDocumentsOnlySupportedChatGPTCommands(t *testing.T) {
