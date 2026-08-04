@@ -9,9 +9,9 @@ import (
 	"os"
 	"strings"
 
-	credentials "github.com/circlesac/credentials-go"
 	"github.com/circlesac/prism-cli/internal/chatgpt"
 	"github.com/circlesac/prism-cli/internal/vault"
+	credentials "go.circles.ac/credentials"
 )
 
 type commonOptions struct {

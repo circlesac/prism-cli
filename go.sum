@@ -1,2 +1,2 @@
-github.com/circlesac/credentials-go v1.2.0 h1:4bRghComQsBktN4GFnVO1+iwNpXYekfRC6J375kqJyY=
-github.com/circlesac/credentials-go v1.2.0/go.mod h1:XAx2AkAC9i7xsptIVlzWXGXzBPpUR5ORr2IXTnK2Bqc=
+go.circles.ac/credentials v1.2.2 h1:SmE+O8noap4YSR1jILyGnD4mVw13BCOBdaPwvWxUdcs=
+go.circles.ac/credentials v1.2.2/go.mod h1:RDs78FVXqqQLVdLxljkv+m93YLybNLDjsY/VdcWQ8gA=
