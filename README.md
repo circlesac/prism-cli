@@ -40,7 +40,7 @@ can provision a shared profile, but the `crcl` executable is not required when
 Prism runs. Expired OAuth credentials are refreshed and written back by the
 shared provider.
 
-## ChatGPT accounts
+## Provider accounts
 
 Personal Vault is the default:
 
@@ -48,6 +48,9 @@ Personal Vault is the default:
 prism chatgpt auth login
 prism chatgpt auth list
 prism chatgpt auth remove <account-id>
+
+prism copilot auth login
+prism gemini auth login
 ```
 
 Select an organization Vault explicitly:
@@ -56,6 +59,23 @@ Select an organization Vault explicitly:
 prism chatgpt auth login --org circlesac
 prism chatgpt auth list --org circlesac
 prism chatgpt auth remove <account-id> --org circlesac
+```
+
+Static credentials are read from hidden stdin and never accepted as command-line
+arguments:
+
+```sh
+prism groq auth add default --name personal
+prism mistral auth add default
+prism gemini-ai auth add default
+prism deepseek auth add default
+prism opencode-go auth add default
+prism cloudflare auth add default --provider-account-id <cloudflare-account-id>
+prism vercel auth add default --owner-id <vercel-owner-id>
+prism gemini-app auth add default
+
+prism groq auth list
+prism groq auth remove default
 ```
 
 Add `--profile <name>` to any command to choose a Circles profile. Login opens
@@ -75,8 +95,10 @@ prism chatgpt auth login --profile dev-personal
 prism chatgpt auth list --profile dev-personal
 ```
 
-ChatGPT account selection remains automatic in the Worker, so the CLI
-intentionally has no `set-default` command.
+OAuth account IDs and names are derived from provider callbacks. Static
+credentials use the explicit account ID and optional `--name`. Each account is
+stored as a separate `API_CREDENTIAL` item with provider/account tags and a
+stable provider URL. The CLI intentionally has no `set-default` command.
 
 ## Build and test
 
@@ -88,3 +110,6 @@ go build -mod=vendor -o prism .
 
 The official Circles Go credential provider is pinned and vendored from the
 public `github.com/circlesac/credentials-go` module for reproducible releases.
+Official release binaries include the Gemini desktop OAuth client. Source-built
+binaries can enable Gemini login with `PRISM_GEMINI_OAUTH_CLIENT_ID` and
+`PRISM_GEMINI_OAUTH_CLIENT_SECRET`.
