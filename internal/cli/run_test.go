@@ -218,6 +218,9 @@ func TestGeminiAppReadsBothCookiesFromSeparateLines(t *testing.T) {
 	if bundle["psid"] != "psid-secret" || bundle["psidts"] != "psidts-secret" {
 		t.Fatalf("bundle = %#v", bundle)
 	}
+	if lastRotatedAt, ok := bundle["last_rotated_at"].(int64); !ok || lastRotatedAt <= 0 {
+		t.Fatalf("last_rotated_at = %#v", bundle["last_rotated_at"])
+	}
 }
 
 func TestOAuthLoginRejectsCallerChosenAccountIdentity(t *testing.T) {
