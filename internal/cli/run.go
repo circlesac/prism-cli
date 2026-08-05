@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	credentials "github.com/circlesac/credentials-go"
 	"github.com/circlesac/prism-cli/internal/chatgpt"
@@ -224,7 +225,12 @@ func readProviderCredential(
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"psid": psid, "psidts": psidts, "alias": options.name}, nil
+		return map[string]any{
+			"psid":            psid,
+			"psidts":          psidts,
+			"alias":           options.name,
+			"last_rotated_at": time.Now().UnixMilli(),
+		}, nil
 	}
 	apiKey, err := secret.Read("API key: ", input, output, true)
 	if err != nil {
