@@ -29,6 +29,30 @@ type Account struct {
 	Alias string
 }
 
+type providerMetadata struct {
+	Title string
+	URL   string
+}
+
+var providers = map[string]providerMetadata{
+	"chatgpt":     {Title: "ChatGPT", URL: "https://chatgpt.com"},
+	"copilot":     {Title: "GitHub Copilot", URL: "https://github.com/features/copilot"},
+	"gemini":      {Title: "Gemini Code Assist", URL: "https://cloudcode-pa.googleapis.com"},
+	"gemini-ai":   {Title: "Google AI Studio", URL: "https://aistudio.google.com"},
+	"groq":        {Title: "Groq", URL: "https://console.groq.com"},
+	"mistral":     {Title: "Mistral", URL: "https://console.mistral.ai"},
+	"deepseek":    {Title: "DeepSeek", URL: "https://platform.deepseek.com"},
+	"opencode-go": {Title: "OpenCode Go", URL: "https://opencode.ai/zen"},
+	"cloudflare":  {Title: "Cloudflare Workers AI", URL: "https://dash.cloudflare.com"},
+	"vercel":      {Title: "Vercel AI Gateway", URL: "https://vercel.com/ai-gateway"},
+	"gemini-app":  {Title: "Gemini App", URL: "https://gemini.google.com"},
+}
+
+func SupportedProvider(provider string) bool {
+	_, ok := providers[provider]
+	return ok
+}
+
 type vaultRecord struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -57,59 +81,79 @@ type itemBody struct {
 }
 
 func (c Client) UpsertChatGPT(ctx context.Context, bundle chatgpt.Bundle) error {
+	return c.UpsertProvider(ctx, "chatgpt", bundle.AccountID, bundle.Alias, bundle)
+}
+
+func (c Client) UpsertProvider(
+	ctx context.Context,
+	provider string,
+	accountID string,
+	alias string,
+	credential any,
+) error {
 	if err := c.validate(); err != nil {
 		return err
 	}
-	if err := validateAccountID(bundle.AccountID); err != nil {
+	metadata, ok := providers[provider]
+	if !ok {
+		return fmt.Errorf("unsupported provider %q", provider)
+	}
+	if err := validateAccountID(accountID); err != nil {
 		return err
 	}
 	vault, err := c.ensurePrismVault(ctx)
 	if err != nil {
 		return err
 	}
-	items, err := c.listChatGPTItems(ctx, vault.ID, bundle.AccountID)
+	items, err := c.listProviderItems(ctx, vault.ID, provider, accountID)
 	if err != nil {
 		return err
 	}
 	if len(items) > 1 {
-		return fmt.Errorf("Vault contains more than one ChatGPT record for account %q", bundle.AccountID)
+		return fmt.Errorf("Vault contains more than one %s record for account %q", provider, accountID)
 	}
-	credential, err := json.Marshal(bundle)
+	credentialJSON, err := json.Marshal(credential)
 	if err != nil {
-		return errors.New("could not encode the ChatGPT credential bundle")
+		return fmt.Errorf("could not encode the %s credential bundle", provider)
 	}
-	title := "ChatGPT — " + bundle.AccountID
-	if bundle.Alias != "" {
-		title = "ChatGPT — " + bundle.Alias
+	title := metadata.Title + " — " + accountID
+	if alias != "" {
+		title = metadata.Title + " — " + alias
 	}
 	body := itemBody{
 		Title:    title,
 		Category: "API_CREDENTIAL",
-		Tags:     chatGPTTags(bundle.AccountID),
+		Tags:     providerTags(provider, accountID),
 		Fields: []field{
 			{
 				ID:    "credential",
 				Type:  "CONCEALED",
 				Label: "credential",
-				Value: string(credential),
+				Value: string(credentialJSON),
 			},
 			{
 				ID:    "provider",
 				Type:  "STRING",
 				Label: "provider",
-				Value: "chatgpt",
+				Value: provider,
 			},
 			{
 				ID:    "account_id",
 				Type:  "STRING",
 				Label: "account_id",
-				Value: bundle.AccountID,
+				Value: accountID,
 			},
 			{
 				ID:    "alias",
 				Type:  "STRING",
 				Label: "alias",
-				Value: bundle.Alias,
+				Value: alias,
+			},
+			{
+				ID:    "url",
+				Type:  "URL",
+				Label: "url",
+				Value: metadata.URL,
 			},
 			{
 				ID:    "schema_version",
@@ -136,8 +180,16 @@ func (c Client) UpsertChatGPT(ctx context.Context, bundle chatgpt.Bundle) error 
 }
 
 func (c Client) ListChatGPT(ctx context.Context) ([]Account, error) {
+	return c.ListProvider(ctx, "chatgpt")
+}
+
+func (c Client) ListProvider(ctx context.Context, provider string) ([]Account, error) {
 	if err := c.validate(); err != nil {
 		return nil, err
+	}
+	metadata, ok := providers[provider]
+	if !ok {
+		return nil, fmt.Errorf("unsupported provider %q", provider)
 	}
 	vaults, err := c.listVaults(ctx)
 	if err != nil {
@@ -155,7 +207,7 @@ func (c Client) ListChatGPT(ctx context.Context) ([]Account, error) {
 	if prismVault == nil {
 		return []Account{}, nil
 	}
-	items, err := c.listChatGPTItems(ctx, prismVault.ID, "")
+	items, err := c.listProviderItems(ctx, prismVault.ID, provider, "")
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +217,7 @@ func (c Client) ListChatGPT(ctx context.Context) ([]Account, error) {
 		if accountID == "" {
 			continue
 		}
-		alias := strings.TrimPrefix(item.Title, "ChatGPT — ")
+		alias := strings.TrimPrefix(item.Title, metadata.Title+" — ")
 		if alias == item.Title {
 			alias = ""
 		}
@@ -175,8 +227,15 @@ func (c Client) ListChatGPT(ctx context.Context) ([]Account, error) {
 }
 
 func (c Client) RemoveChatGPT(ctx context.Context, accountID string) (bool, error) {
+	return c.RemoveProvider(ctx, "chatgpt", accountID)
+}
+
+func (c Client) RemoveProvider(ctx context.Context, provider string, accountID string) (bool, error) {
 	if err := c.validate(); err != nil {
 		return false, err
+	}
+	if !SupportedProvider(provider) {
+		return false, fmt.Errorf("unsupported provider %q", provider)
 	}
 	if err := validateAccountID(accountID); err != nil {
 		return false, err
@@ -189,12 +248,12 @@ func (c Client) RemoveChatGPT(ctx context.Context, accountID string) (bool, erro
 		if vault.Name != "Prism" {
 			continue
 		}
-		items, err := c.listChatGPTItems(ctx, vault.ID, accountID)
+		items, err := c.listProviderItems(ctx, vault.ID, provider, accountID)
 		if err != nil {
 			return false, err
 		}
 		if len(items) > 1 {
-			return false, fmt.Errorf("Vault contains more than one ChatGPT record for account %q", accountID)
+			return false, fmt.Errorf("Vault contains more than one %s record for account %q", provider, accountID)
 		}
 		if len(items) == 0 {
 			return false, nil
@@ -261,12 +320,13 @@ func (c Client) listVaults(ctx context.Context) ([]vaultRecord, error) {
 	return result, err
 }
 
-func (c Client) listChatGPTItems(
+func (c Client) listProviderItems(
 	ctx context.Context,
 	vaultID string,
+	provider string,
 	accountID string,
 ) ([]itemRecord, error) {
-	tags := []string{"prism", "provider:chatgpt"}
+	tags := []string{"prism", "provider:" + provider}
 	if accountID != "" {
 		tags = append(tags, "account:"+accountID)
 	}
@@ -369,8 +429,8 @@ func (c Client) namespacePath() string {
 	return "/" + url.PathEscape(c.Org) + "/v1"
 }
 
-func chatGPTTags(accountID string) []string {
-	return []string{"prism", "provider:chatgpt", "account:" + accountID}
+func providerTags(provider string, accountID string) []string {
+	return []string{"prism", "provider:" + provider, "account:" + accountID}
 }
 
 func accountIDFromTags(tags []string) string {
@@ -386,7 +446,7 @@ func validateAccountID(accountID string) error {
 	if accountID == "" ||
 		len(accountID) > 200 ||
 		strings.ContainsAny(accountID, ",\r\n\t") {
-		return errors.New("ChatGPT account ID is invalid")
+		return errors.New("provider account ID is invalid")
 	}
 	return nil
 }

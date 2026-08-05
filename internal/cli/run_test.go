@@ -182,3 +182,47 @@ func TestVaultURLFollowsTheCirclesProfileStage(t *testing.T) {
 		})
 	}
 }
+
+func TestStaticProviderSecretsComeFromInputNotOptions(t *testing.T) {
+	options := commonOptions{
+		name:              "work",
+		providerAccountID: "cf-account-123",
+	}
+	bundle, err := readProviderCredential(
+		"cloudflare",
+		options,
+		bytes.NewBufferString("cloudflare-secret\n"),
+		&bytes.Buffer{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle["api_key"] != "cloudflare-secret" || bundle["account_id"] != "cf-account-123" {
+		t.Fatalf("bundle = %#v", bundle)
+	}
+	if err := validateCommand("cloudflare", "add", []string{"default"}, commonOptions{}); err == nil {
+		t.Fatal("Cloudflare account ID option was not required")
+	}
+}
+
+func TestGeminiAppReadsBothCookiesFromSeparateLines(t *testing.T) {
+	bundle, err := readProviderCredential(
+		"gemini-app",
+		commonOptions{name: "personal"},
+		bytes.NewBufferString("psid-secret\npsidts-secret\n"),
+		&bytes.Buffer{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle["psid"] != "psid-secret" || bundle["psidts"] != "psidts-secret" {
+		t.Fatalf("bundle = %#v", bundle)
+	}
+}
+
+func TestOAuthLoginRejectsCallerChosenAccountIdentity(t *testing.T) {
+	err := validateCommand("chatgpt", "login", nil, commonOptions{name: "chosen"})
+	if err == nil || !strings.Contains(err.Error(), "provider callback") {
+		t.Fatalf("error = %v", err)
+	}
+}
