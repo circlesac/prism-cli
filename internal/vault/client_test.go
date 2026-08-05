@@ -161,3 +161,56 @@ func TestExistingOrgAccountUsesOrgNamespaceAndVersionPrecondition(t *testing.T) 
 		t.Fatal(err)
 	}
 }
+
+func TestStaticProviderUsesProviderTagsURLAndConcealedBundle(t *testing.T) {
+	var stored itemBody
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/vaults":
+			_, _ = response.Write([]byte(`[{"id":"vault-1","name":"Prism"}]`))
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/vaults/vault-1/items":
+			if request.URL.Query().Get("tags") != "prism,provider:groq,account:default" {
+				t.Errorf("tags = %q", request.URL.Query().Get("tags"))
+			}
+			_, _ = response.Write([]byte("[]"))
+		case request.Method == http.MethodPost && request.URL.Path == "/v1/vaults/vault-1/items":
+			if err := json.NewDecoder(request.Body).Decode(&stored); err != nil {
+				t.Error(err)
+			}
+			_, _ = response.Write([]byte(`{"id":"item-1","version":1}`))
+		default:
+			t.Errorf("unexpected request: %s %s", request.Method, request.URL.String())
+			http.Error(response, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := Client{BaseURL: server.URL, Token: "circles-key", HTTPClient: server.Client()}
+	if err := client.UpsertProvider(context.Background(), "groq", "default", "work", map[string]string{
+		"api_key": "provider-secret",
+		"alias":   "work",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Title != "Groq — work" || strings.Join(stored.Tags, ",") != "prism,provider:groq,account:default" {
+		t.Fatalf("stored metadata = %#v", stored)
+	}
+	fields := make(map[string]field)
+	for _, itemField := range stored.Fields {
+		fields[itemField.ID] = itemField
+	}
+	if fields["url"].Type != "URL" || fields["url"].Value != "https://console.groq.com" {
+		t.Fatalf("URL field = %#v", fields["url"])
+	}
+	if fields["credential"].Type != "CONCEALED" || !strings.Contains(fields["credential"].Value, "provider-secret") {
+		t.Fatalf("credential field = %#v", fields["credential"])
+	}
+	metadata, _ := json.Marshal(struct {
+		Title string
+		Tags  []string
+	}{stored.Title, stored.Tags})
+	if strings.Contains(string(metadata), "provider-secret") {
+		t.Fatal("provider secret leaked into item metadata")
+	}
+}

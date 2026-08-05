@@ -82,6 +82,19 @@ jobs:
         with:
           name: versioned-files
 
+      - name: Configure Gemini OAuth client
+        env:
+          GEMINI_OAUTH_CLIENT_ID_BASE64: ${{ secrets.GEMINI_OAUTH_CLIENT_ID_BASE64 }}
+          GEMINI_OAUTH_CLIENT_SECRET_BASE64: ${{ secrets.GEMINI_OAUTH_CLIENT_SECRET_BASE64 }}
+        shell: bash
+        run: |
+          test -n "$GEMINI_OAUTH_CLIENT_ID_BASE64"
+          test -n "$GEMINI_OAUTH_CLIENT_SECRET_BASE64"
+          umask 077
+          printf 'package gemini\n\nfunc init() {\n\tbundledClientIDBase64 = "%s"\n\tbundledClientSecretBase64 = "%s"\n}\n' \
+            "$GEMINI_OAUTH_CLIENT_ID_BASE64" "$GEMINI_OAUTH_CLIENT_SECRET_BASE64" \
+            > internal/gemini/oauth_credentials_generated.go
+
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
