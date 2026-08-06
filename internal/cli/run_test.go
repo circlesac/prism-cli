@@ -35,15 +35,21 @@ func TestHelpDocumentsOnlySupportedChatGPTCommands(t *testing.T) {
 
 func TestChatGPTUsageOutputShowsEveryLimitAndPartialErrors(t *testing.T) {
 	plan := "pro"
-	reset := "2026-08-11T00:24:55Z"
+	reset := "2026-08-11T00:24:55.000Z"
 	usage := api.ProviderUsage{Provider: "chatgpt", Accounts: []api.UsageAccount{
 		{
 			Name: "person@example.com",
 			Plan: &plan,
-			Limits: []api.UsageLimit{{
-				Name: "default", Window: "primary", UsedPercent: 88,
-				RemainingPercent: 12, ResetAt: &reset,
-			}},
+			Limits: []api.UsageLimit{
+				{
+					Name: "default", Window: "primary", UsedPercent: 88,
+					RemainingPercent: 12, ResetAt: &reset,
+				},
+				{
+					Name: "GPT-5.3-Codex-Spark", Window: "primary", UsedPercent: 0,
+					RemainingPercent: 100,
+				},
+			},
 		},
 		{
 			Name:  "other@example.com",
@@ -52,14 +58,16 @@ func TestChatGPTUsageOutputShowsEveryLimitAndPartialErrors(t *testing.T) {
 	}}
 	var output bytes.Buffer
 	printUsage(&output, usage)
-	for _, expected := range []string{
-		"NAME\tPLAN\tLIMIT\tWINDOW\tUSED\tREMAINING\tRESET",
-		"person@example.com\tpro\tdefault\tprimary\t88%\t12%\t2026-08-11T00:24:55Z",
-		"other@example.com\t-\t-\t-\t-\t-\tERROR: ChatGPT usage is unavailable",
-	} {
-		if !strings.Contains(output.String(), expected) {
-			t.Fatalf("output did not contain %q:\n%s", expected, output.String())
-		}
+	want := `┌────────────────────┬──────┬─────────────────────┬─────────┬──────┬───────────┬─────────────────────────────────────┐
+│ NAME               │ PLAN │ LIMIT               │ WINDOW  │ USED │ REMAINING │ RESET                               │
+├────────────────────┼──────┼─────────────────────┼─────────┼──────┼───────────┼─────────────────────────────────────┤
+│ person@example.com │ pro  │ default             │ primary │  88% │       12% │ 2026-08-11 00:24 UTC                │
+│                    │      │ GPT-5.3-Codex-Spark │ primary │   0% │      100% │ -                                   │
+│ other@example.com  │ -    │ -                   │ -       │    - │         - │ ERROR: ChatGPT usage is unavailable │
+└────────────────────┴──────┴─────────────────────┴─────────┴──────┴───────────┴─────────────────────────────────────┘
+`
+	if output.String() != want {
+		t.Fatalf("output =\n%s\nwant:\n%s", output.String(), want)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	credentials "github.com/circlesac/credentials-go"
 	"github.com/circlesac/prism-cli/internal/api"
@@ -192,34 +193,85 @@ func printUsage(output io.Writer, usage api.ProviderUsage) {
 		fmt.Fprintf(output, "No %s credentials are registered.\n", usage.Provider)
 		return
 	}
-	fmt.Fprintln(output, "NAME\tPLAN\tLIMIT\tWINDOW\tUSED\tREMAINING\tRESET")
+	rows := [][]string{{"NAME", "PLAN", "LIMIT", "WINDOW", "USED", "REMAINING", "RESET"}}
 	for _, account := range usage.Accounts {
 		plan := "-"
 		if account.Plan != nil && *account.Plan != "" {
 			plan = *account.Plan
 		}
 		if account.Error != nil {
-			fmt.Fprintf(output, "%s\t%s\t-\t-\t-\t-\tERROR: %s\n", account.Name, plan, account.Error.Message)
+			rows = append(rows, []string{account.Name, plan, "-", "-", "-", "-", "ERROR: " + account.Error.Message})
 			continue
 		}
-		for _, limit := range account.Limits {
+		for index, limit := range account.Limits {
+			name := account.Name
+			rowPlan := plan
+			if index > 0 {
+				name = ""
+				rowPlan = ""
+			}
 			reset := "-"
 			if limit.ResetAt != nil {
-				reset = *limit.ResetAt
+				reset = formatUsageReset(*limit.ResetAt)
 			}
-			fmt.Fprintf(
-				output,
-				"%s\t%s\t%s\t%s\t%g%%\t%g%%\t%s\n",
-				account.Name,
-				plan,
+			rows = append(rows, []string{
+				name,
+				rowPlan,
 				limit.Name,
 				limit.Window,
-				limit.UsedPercent,
-				limit.RemainingPercent,
+				fmt.Sprintf("%g%%", limit.UsedPercent),
+				fmt.Sprintf("%g%%", limit.RemainingPercent),
 				reset,
-			)
+			})
 		}
 	}
+	printTable(output, rows, map[int]bool{4: true, 5: true})
+}
+
+func formatUsageReset(value string) string {
+	reset, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return value
+	}
+	return reset.UTC().Format("2006-01-02 15:04 MST")
+}
+
+func printTable(output io.Writer, rows [][]string, rightAligned map[int]bool) {
+	widths := make([]int, len(rows[0]))
+	for _, row := range rows {
+		for column, value := range row {
+			row[column] = strings.NewReplacer("\r", " ", "\n", " ", "\t", " ").Replace(value)
+			widths[column] = max(widths[column], utf8.RuneCountInString(row[column]))
+		}
+	}
+	printTableBorder(output, widths, "┌", "┬", "┐")
+	for index, row := range rows {
+		fmt.Fprint(output, "│")
+		for column, value := range row {
+			padding := widths[column] - utf8.RuneCountInString(value)
+			if rightAligned[column] && index > 0 {
+				fmt.Fprintf(output, " %s%s │", strings.Repeat(" ", padding), value)
+			} else {
+				fmt.Fprintf(output, " %s%s │", value, strings.Repeat(" ", padding))
+			}
+		}
+		fmt.Fprintln(output)
+		if index == 0 {
+			printTableBorder(output, widths, "├", "┼", "┤")
+		}
+	}
+	printTableBorder(output, widths, "└", "┴", "┘")
+}
+
+func printTableBorder(output io.Writer, widths []int, left string, middle string, right string) {
+	fmt.Fprint(output, left)
+	for column, width := range widths {
+		if column > 0 {
+			fmt.Fprint(output, middle)
+		}
+		fmt.Fprint(output, strings.Repeat("─", width+2))
+	}
+	fmt.Fprintln(output, right)
 }
 
 func loginProvider(ctx context.Context, provider string, client api.Client, output io.Writer) error {
