@@ -42,20 +42,32 @@ func Run(
 		fmt.Fprintln(stdout, version)
 		return nil
 	}
-	if len(args) < 3 || args[1] != "auth" {
-		return errors.New("unknown command; run 'prism help'")
-	}
 	providerName := strings.ToLower(args[0])
 	if !api.SupportedProvider(providerName) {
 		return fmt.Errorf("unsupported provider %q", providerName)
 	}
-	command := args[2]
-	options, positionals, err := parseCommonOptions(args[3:])
+	if len(args) < 2 {
+		return errors.New("unknown command; run 'prism help'")
+	}
+	command := args[1]
+	commandArgs := args[2:]
+	if command == "auth" {
+		if len(args) < 3 {
+			return errors.New("unknown provider auth command; use login/add, list, or remove")
+		}
+		command = args[2]
+		commandArgs = args[3:]
+	}
+	options, positionals, err := parseCommonOptions(commandArgs)
 	if err != nil {
 		return err
 	}
 	if options.help {
-		printProviderAuthHelp(stdout, providerName)
+		if command == "usage" {
+			printProviderUsageHelp(stdout, providerName)
+		} else {
+			printProviderAuthHelp(stdout, providerName)
+		}
 		return nil
 	}
 	if err := validateCommand(providerName, command, positionals, options); err != nil {
@@ -89,6 +101,12 @@ func Run(
 	client := api.Client{BaseURL: prismURL, Token: circlesCredential.Value}
 
 	switch command {
+	case "usage":
+		usage, err := client.Usage(ctx, providerName)
+		if err != nil {
+			return err
+		}
+		printUsage(stdout, usage)
 	case "login":
 		return loginProvider(ctx, providerName, client, stdout)
 	case "add":
@@ -125,6 +143,16 @@ func Run(
 
 func validateCommand(provider string, command string, positionals []string, options commonOptions) error {
 	switch command {
+	case "usage":
+		if provider != "chatgpt" {
+			return fmt.Errorf("%s usage is not supported", provider)
+		}
+		if len(positionals) != 0 {
+			return fmt.Errorf("unexpected argument %q", positionals[0])
+		}
+		if options.name != "" || options.providerAccountID != "" || options.ownerID != "" {
+			return errors.New("usage accepts only --profile")
+		}
 	case "login":
 		if provider != "chatgpt" && provider != "copilot" && provider != "gemini" {
 			return fmt.Errorf("%s uses 'auth add', not 'auth login'", provider)
@@ -157,6 +185,41 @@ func validateCommand(provider string, command string, positionals []string, opti
 		return errors.New("unknown provider auth command; use login/add, list, or remove")
 	}
 	return nil
+}
+
+func printUsage(output io.Writer, usage api.ProviderUsage) {
+	if len(usage.Accounts) == 0 {
+		fmt.Fprintf(output, "No %s credentials are registered.\n", usage.Provider)
+		return
+	}
+	fmt.Fprintln(output, "NAME\tPLAN\tLIMIT\tWINDOW\tUSED\tREMAINING\tRESET")
+	for _, account := range usage.Accounts {
+		plan := "-"
+		if account.Plan != nil && *account.Plan != "" {
+			plan = *account.Plan
+		}
+		if account.Error != nil {
+			fmt.Fprintf(output, "%s\t%s\t-\t-\t-\t-\tERROR: %s\n", account.Name, plan, account.Error.Message)
+			continue
+		}
+		for _, limit := range account.Limits {
+			reset := "-"
+			if limit.ResetAt != nil {
+				reset = *limit.ResetAt
+			}
+			fmt.Fprintf(
+				output,
+				"%s\t%s\t%s\t%s\t%g%%\t%g%%\t%s\n",
+				account.Name,
+				plan,
+				limit.Name,
+				limit.Window,
+				limit.UsedPercent,
+				limit.RemainingPercent,
+				reset,
+			)
+		}
+	}
 }
 
 func loginProvider(ctx context.Context, provider string, client api.Client, output io.Writer) error {
@@ -332,6 +395,7 @@ func printHelp(output io.Writer) {
 	fmt.Fprintln(output, `Prism provider credential manager
 
 Usage:
+  prism chatgpt usage [--profile <name>]
   prism chatgpt auth login [--profile <name>]
   prism copilot auth login [--profile <name>]
   prism gemini auth login [--profile <name>]
@@ -363,4 +427,8 @@ func printProviderAuthHelp(output io.Writer, provider string) {
   prism %s auth list [--profile <name>]
   prism %s auth remove <credential-id> [--profile <name>]
 `, provider, provider, provider)
+}
+
+func printProviderUsageHelp(output io.Writer, provider string) {
+	fmt.Fprintf(output, "Usage:\n  prism %s usage [--profile <name>]\n", provider)
 }

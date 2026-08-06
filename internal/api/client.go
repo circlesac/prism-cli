@@ -25,6 +25,34 @@ type Credential struct {
 	Name     string `json:"name"`
 }
 
+type UsageLimit struct {
+	Name             string  `json:"name"`
+	Window           string  `json:"window"`
+	UsedPercent      float64 `json:"used_percent"`
+	RemainingPercent float64 `json:"remaining_percent"`
+	LimitReached     bool    `json:"limit_reached"`
+	ResetAt          *string `json:"reset_at"`
+}
+
+type UsageError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type UsageAccount struct {
+	ID         string       `json:"id"`
+	Name       string       `json:"name"`
+	Plan       *string      `json:"plan"`
+	ObservedAt string       `json:"observed_at"`
+	Limits     []UsageLimit `json:"limits"`
+	Error      *UsageError  `json:"error"`
+}
+
+type ProviderUsage struct {
+	Provider string         `json:"provider"`
+	Accounts []UsageAccount `json:"accounts"`
+}
+
 var providers = map[string]struct{}{
 	"chatgpt": {}, "copilot": {}, "gemini": {}, "gemini-ai": {},
 	"groq": {}, "mistral": {}, "deepseek": {}, "opencode-go": {},
@@ -64,6 +92,12 @@ func (c Client) List(ctx context.Context, provider string) ([]Credential, error)
 
 func (c Client) Remove(ctx context.Context, id string) error {
 	return c.request(ctx, http.MethodDelete, "/credentials/"+url.PathEscape(id), nil, nil)
+}
+
+func (c Client) Usage(ctx context.Context, provider string) (ProviderUsage, error) {
+	var usage ProviderUsage
+	err := c.request(ctx, http.MethodGet, "/usage/"+url.PathEscape(provider), nil, &usage)
+	return usage, err
 }
 
 func (c Client) request(

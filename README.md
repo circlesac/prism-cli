@@ -41,6 +41,7 @@ shared provider.
 Credentials are personal in this release:
 
 ```sh
+prism chatgpt usage
 prism chatgpt auth login
 prism chatgpt auth list
 prism chatgpt auth remove <credential-id>
@@ -88,6 +89,10 @@ Static credentials have no caller-selected account ID: Prism returns the Vault
 item ID used by `auth remove`, while `--name` is only a friendly label. Each
 credential is a separate `API_CREDENTIAL` item. The CLI intentionally has no
 `set-default` command.
+
+`prism chatgpt usage` reads normalized account quota snapshots from
+`GET /usage/chatgpt`. It prints every registered account and limit without
+exposing OAuth tokens or provider account UUIDs.
 
 ## Build and test
 
