@@ -21,6 +21,7 @@ import (
 )
 
 type Bundle struct {
+	IDToken      string `json:"id_token,omitempty"`
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	AccountID    string `json:"account_id"`
@@ -247,6 +248,7 @@ func bundleFromTokens(tokens tokenResponse, now time.Time) (Bundle, error) {
 		expiresIn = 3600
 	}
 	return Bundle{
+		IDToken:      tokens.IDToken,
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
 		AccountID:    accountID,
