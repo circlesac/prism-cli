@@ -11,15 +11,14 @@ import (
 	"time"
 
 	credentials "github.com/circlesac/credentials-go"
+	"github.com/circlesac/prism-cli/internal/api"
 	"github.com/circlesac/prism-cli/internal/chatgpt"
 	"github.com/circlesac/prism-cli/internal/copilot"
 	"github.com/circlesac/prism-cli/internal/gemini"
 	"github.com/circlesac/prism-cli/internal/secret"
-	"github.com/circlesac/prism-cli/internal/vault"
 )
 
 type commonOptions struct {
-	org               string
 	profile           string
 	profileSet        bool
 	name              string
@@ -47,7 +46,7 @@ func Run(
 		return errors.New("unknown command; run 'prism help'")
 	}
 	providerName := strings.ToLower(args[0])
-	if !vault.SupportedProvider(providerName) {
+	if !api.SupportedProvider(providerName) {
 		return fmt.Errorf("unsupported provider %q", providerName)
 	}
 	command := args[2]
@@ -76,64 +75,50 @@ func Run(
 	if err != nil {
 		return err
 	}
-	selectedProfile := ""
+	var selectedProfile *credentials.StoredProfile
 	if circlesCredential.Source.Type == credentials.SourceProfile {
-		profile, err := credentialProvider.GetProfile(ctx)
+		selectedProfile, err = credentialProvider.GetProfile(ctx)
 		if err != nil {
 			return err
 		}
-		if _, err = vaultURLForProfile(profile); err != nil {
-			return err
-		}
-		selectedProfile = circlesCredential.Source.Profile
 	}
-	bridge, err := vault.StartConnectBridge(ctx, selectedProfile, options.org, os.Stdin, stderr)
+	prismURL, err := prismURLForProfile(selectedProfile)
 	if err != nil {
 		return err
 	}
-	defer bridge.Close()
-	vaultClient := vault.Client{BaseURL: bridge.Host, Token: bridge.Token}
+	client := api.Client{BaseURL: prismURL, Token: circlesCredential.Value}
 
 	switch command {
 	case "login":
-		return loginProvider(ctx, providerName, vaultClient, stdout)
+		return loginProvider(ctx, providerName, client, stdout)
 	case "add":
-		accountID := positionals[0]
 		bundle, err := readProviderCredential(providerName, options, os.Stdin, stderr)
 		if err != nil {
 			return err
 		}
-		alias := options.name
-		if alias == "" {
-			alias = accountID
-		}
-		bundle["alias"] = alias
-		if err := vaultClient.UpsertProvider(ctx, providerName, accountID, alias, bundle); err != nil {
+		saved, err := client.Save(ctx, providerName, options.name, bundle)
+		if err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "Saved %s account %s.\n", providerName, accountID)
+		fmt.Fprintf(stdout, "Saved %s credential %s (%s).\n", providerName, saved.Name, saved.ID)
 	case "list":
-		accounts, err := vaultClient.ListProvider(ctx, providerName)
+		accounts, err := client.List(ctx, providerName)
 		if err != nil {
 			return err
 		}
 		if len(accounts) == 0 {
-			fmt.Fprintf(stdout, "No %s accounts are registered in this Vault namespace.\n", providerName)
+			fmt.Fprintf(stdout, "No %s credentials are registered.\n", providerName)
 			return nil
 		}
-		fmt.Fprintln(stdout, "ACCOUNT ID\tNAME")
+		fmt.Fprintln(stdout, "ID\tNAME")
 		for _, account := range accounts {
-			fmt.Fprintf(stdout, "%s\t%s\n", account.ID, account.Alias)
+			fmt.Fprintf(stdout, "%s\t%s\n", account.ID, account.Name)
 		}
 	case "remove":
-		removed, err := vaultClient.RemoveProvider(ctx, providerName, positionals[0])
-		if err != nil {
+		if err := client.Remove(ctx, positionals[0]); err != nil {
 			return err
 		}
-		if !removed {
-			return fmt.Errorf("%s account %q was not found", providerName, positionals[0])
-		}
-		fmt.Fprintf(stdout, "Removed %s account %s.\n", providerName, positionals[0])
+		fmt.Fprintf(stdout, "Removed %s credential %s.\n", providerName, positionals[0])
 	}
 	return nil
 }
@@ -154,8 +139,8 @@ func validateCommand(provider string, command string, positionals []string, opti
 		if provider == "chatgpt" || provider == "copilot" || provider == "gemini" {
 			return fmt.Errorf("%s uses 'auth login', not 'auth add'", provider)
 		}
-		if len(positionals) != 1 {
-			return fmt.Errorf("usage: prism %s auth add <account-id> [options]", provider)
+		if len(positionals) != 0 {
+			return fmt.Errorf("unexpected argument %q", positionals[0])
 		}
 		if provider == "cloudflare" && options.providerAccountID == "" {
 			return errors.New("cloudflare auth add requires --provider-account-id")
@@ -166,7 +151,7 @@ func validateCommand(provider string, command string, positionals []string, opti
 		}
 	case "remove":
 		if len(positionals) != 1 {
-			return fmt.Errorf("usage: prism %s auth remove <account-id> [--org <slug>] [--profile <name>]", provider)
+			return fmt.Errorf("usage: prism %s auth remove <credential-id> [--profile <name>]", provider)
 		}
 	default:
 		return errors.New("unknown provider auth command; use login/add, list, or remove")
@@ -174,7 +159,7 @@ func validateCommand(provider string, command string, positionals []string, opti
 	return nil
 }
 
-func loginProvider(ctx context.Context, provider string, client vault.Client, output io.Writer) error {
+func loginProvider(ctx context.Context, provider string, client api.Client, output io.Writer) error {
 	switch provider {
 	case "chatgpt":
 		fmt.Fprintln(output, "Opening a browser for ChatGPT login...")
@@ -182,30 +167,33 @@ func loginProvider(ctx context.Context, provider string, client vault.Client, ou
 		if err != nil {
 			return err
 		}
-		if err := client.UpsertChatGPT(ctx, bundle); err != nil {
+		saved, err := client.Save(ctx, "chatgpt", "", bundle)
+		if err != nil {
 			return err
 		}
-		fmt.Fprintf(output, "Saved ChatGPT account %s (%s).\n", bundle.Alias, bundle.AccountID)
+		fmt.Fprintf(output, "Saved ChatGPT credential %s (%s).\n", saved.Name, saved.ID)
 	case "copilot":
 		fmt.Fprintln(output, "Starting GitHub Copilot device login...")
 		bundle, err := (copilot.OAuth{}).Login(ctx, output)
 		if err != nil {
 			return err
 		}
-		if err := client.UpsertProvider(ctx, "copilot", bundle.Username, bundle.Alias, bundle); err != nil {
+		saved, err := client.Save(ctx, "copilot", "", bundle)
+		if err != nil {
 			return err
 		}
-		fmt.Fprintf(output, "Saved Copilot account %s.\n", bundle.Username)
+		fmt.Fprintf(output, "Saved Copilot credential %s (%s).\n", saved.Name, saved.ID)
 	case "gemini":
 		fmt.Fprintln(output, "Opening a browser for Gemini Code Assist login...")
 		bundle, err := (gemini.OAuth{}).Login(ctx)
 		if err != nil {
 			return err
 		}
-		if err := client.UpsertProvider(ctx, "gemini", bundle.ProjectID, bundle.Alias, bundle); err != nil {
+		saved, err := client.Save(ctx, "gemini", "", bundle)
+		if err != nil {
 			return err
 		}
-		fmt.Fprintf(output, "Saved Gemini account %s (%s).\n", bundle.Alias, bundle.ProjectID)
+		fmt.Fprintf(output, "Saved Gemini credential %s (%s).\n", saved.Name, saved.ID)
 	}
 	return nil
 }
@@ -253,9 +241,9 @@ func readProviderCredential(
 	return bundle, nil
 }
 
-func vaultURLForProfile(profile *credentials.StoredProfile) (string, error) {
+func prismURLForProfile(profile *credentials.StoredProfile) (string, error) {
 	if profile == nil {
-		return "https://vault.circles.ac", nil
+		return "https://prism.circles.ac", nil
 	}
 	stage := ""
 	for _, endpoint := range []string{profile.Config.APIURL, profile.Config.AuthURL} {
@@ -281,9 +269,9 @@ func vaultURLForProfile(profile *credentials.StoredProfile) (string, error) {
 		stage = detected
 	}
 	if stage == "development" {
-		return "https://vault.crcl.es", nil
+		return "https://prism-dev.circles.ac", nil
 	}
-	return "https://vault.circles.ac", nil
+	return "https://prism.circles.ac", nil
 }
 
 func parseCommonOptions(args []string) (commonOptions, []string, error) {
@@ -294,17 +282,6 @@ func parseCommonOptions(args []string) (commonOptions, []string, error) {
 		switch {
 		case argument == "--help" || argument == "-h":
 			options.help = true
-		case argument == "--org":
-			index++
-			if index >= len(args) || args[index] == "" {
-				return commonOptions{}, nil, errors.New("--org requires a value")
-			}
-			options.org = args[index]
-		case strings.HasPrefix(argument, "--org="):
-			options.org = strings.TrimPrefix(argument, "--org=")
-			if options.org == "" {
-				return commonOptions{}, nil, errors.New("--org requires a value")
-			}
 		case argument == "--profile":
 			index++
 			if index >= len(args) || args[index] == "" {
@@ -355,12 +332,12 @@ func printHelp(output io.Writer) {
 	fmt.Fprintln(output, `Prism provider credential manager
 
 Usage:
-  prism chatgpt auth login [--org <slug>] [--profile <name>]
-  prism copilot auth login [--org <slug>] [--profile <name>]
-  prism gemini auth login [--org <slug>] [--profile <name>]
-  prism <provider> auth add <account-id> [--name <name>] [provider options]
-  prism <provider> auth list [--org <slug>] [--profile <name>]
-  prism <provider> auth remove <account-id> [--org <slug>] [--profile <name>]
+  prism chatgpt auth login [--profile <name>]
+  prism copilot auth login [--profile <name>]
+  prism gemini auth login [--profile <name>]
+  prism <provider> auth add [--name <name>] [provider options]
+  prism <provider> auth list [--profile <name>]
+  prism <provider> auth remove <credential-id> [--profile <name>]
   prism version
 
 Static providers: gemini-ai, groq, mistral, deepseek, opencode-go, cloudflare,
@@ -368,22 +345,21 @@ vercel, and gemini-app. Secret values are read from hidden stdin and are never
 accepted as command-line options. Cloudflare requires --provider-account-id;
 Vercel accepts --owner-id and prompts separately for an optional session cookie.
 
-Personal Vault is the default. Use --org only for organization credentials.
-Circles authentication comes from ~/.crcl or CIRCLES_AUTH_TOKEN.`)
+Run 'crcl login' before using Prism.`)
 }
 
 func printProviderAuthHelp(output io.Writer, provider string) {
 	if provider == "chatgpt" || provider == "copilot" || provider == "gemini" {
 		fmt.Fprintf(output, `Usage:
-  prism %s auth login [--org <slug>] [--profile <name>]
-  prism %s auth list [--org <slug>] [--profile <name>]
-  prism %s auth remove <account-id> [--org <slug>] [--profile <name>]
+  prism %s auth login [--profile <name>]
+  prism %s auth list [--profile <name>]
+  prism %s auth remove <credential-id> [--profile <name>]
 `, provider, provider, provider)
 		return
 	}
 	fmt.Fprintf(output, `Usage:
-  prism %s auth add <account-id> [--name <name>] [--org <slug>] [--profile <name>]
-  prism %s auth list [--org <slug>] [--profile <name>]
-  prism %s auth remove <account-id> [--org <slug>] [--profile <name>]
+  prism %s auth add [--name <name>] [--profile <name>]
+  prism %s auth list [--profile <name>]
+  prism %s auth remove <credential-id> [--profile <name>]
 `, provider, provider, provider)
 }

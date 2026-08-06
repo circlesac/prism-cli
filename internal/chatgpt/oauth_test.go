@@ -105,6 +105,9 @@ func TestLoginCompletesLoopbackPKCEFlow(t *testing.T) {
 	if bundle.RefreshToken != "refresh-token" {
 		t.Fatal("refresh token was not returned")
 	}
+	if bundle.IDToken != idToken {
+		t.Fatal("ID token was not preserved for server-side account verification")
+	}
 }
 
 func TestBundleUsesNestedAccountClaimAndNameAlias(t *testing.T) {
