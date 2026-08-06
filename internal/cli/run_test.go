@@ -26,6 +26,11 @@ func TestHelpDocumentsOnlySupportedChatGPTCommands(t *testing.T) {
 	if strings.Contains(output, "set-default") {
 		t.Fatal("help exposed the unsupported ChatGPT set-default command")
 	}
+	for _, internalDetail := range []string{"Vault", "CIRCLES_AUTH_TOKEN", "prism-dev", "E2EE", "application-plaintext"} {
+		if strings.Contains(output, internalDetail) {
+			t.Fatalf("help exposed internal detail %q", internalDetail)
+		}
+	}
 }
 
 func TestChatGPTUsageOutputShowsEveryLimitAndPartialErrors(t *testing.T) {
@@ -106,14 +111,14 @@ func TestPublicCredentialProviderUsesTheSharedCurrentProfile(t *testing.T) {
 	}
 	if err := os.WriteFile(
 		filepath.Join(credentialDirectory, "config"),
-		[]byte("[__circles__]\ncurrent_profile = dev:yg@melten.ai\n\n[dev:yg@melten.ai]\napi_url = https://api-dev.circles.ac\nauth_url = https://auth-dev.circles.ac\n"),
+		[]byte("[__circles__]\ncurrent_profile = dev:person@example.com\n\n[dev:person@example.com]\napi_url = https://api-dev.circles.ac\nauth_url = https://auth-dev.circles.ac\n"),
 		0o600,
 	); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
 		filepath.Join(credentialDirectory, "credentials"),
-		[]byte("[default]\napi_key = default-key\n\n[dev:yg@melten.ai]\napi_key = melten-key\n"),
+		[]byte("[default]\napi_key = default-key\n\n[dev:person@example.com]\napi_key = profile-key\n"),
 		0o600,
 	); err != nil {
 		t.Fatal(err)
@@ -129,7 +134,7 @@ func TestPublicCredentialProviderUsesTheSharedCurrentProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if credential.Value != "melten-key" || credential.Source != (credentials.Source{Type: credentials.SourceProfile, Profile: "dev:yg@melten.ai"}) {
+	if credential.Value != "profile-key" || credential.Source != (credentials.Source{Type: credentials.SourceProfile, Profile: "dev:person@example.com"}) {
 		t.Fatalf("credential = %#v", credential)
 	}
 	profile, err := provider.GetProfile(context.Background())

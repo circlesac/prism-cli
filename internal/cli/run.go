@@ -409,8 +409,7 @@ vercel, and gemini-app. Secret values are read from hidden stdin and are never
 accepted as command-line options. Cloudflare requires --provider-account-id;
 Vercel accepts --owner-id and prompts separately for an optional session cookie.
 
-Credentials are personal in this release. Circles authentication comes from
-~/.crcl or CIRCLES_AUTH_TOKEN.`)
+Run 'crcl login' before using Prism.`)
 }
 
 func printProviderAuthHelp(output io.Writer, provider string) {

@@ -1,5 +1,5 @@
 class Prism < Formula
-  desc "Register provider credentials for Prism in Circles Vault"
+  desc "Manage provider accounts for Prism"
   homepage "https://github.com/circlesac/prism-cli"
   version "VERSION_PLACEHOLDER"
   license "MIT"
