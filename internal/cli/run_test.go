@@ -27,20 +27,18 @@ func TestHelpDocumentsOnlySupportedChatGPTCommands(t *testing.T) {
 	}
 }
 
-func TestCommonOptionsMayAppearBeforeOrAfterAccountID(t *testing.T) {
+func TestCommonOptionsMayAppearBeforeOrAfterCredentialID(t *testing.T) {
 	options, positionals, err := parseCommonOptions([]string{
-		"--org", "circlesac",
-		"account-123",
+		"01j00000000000000000000002",
 		"--profile=dev",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if options.org != "circlesac" ||
-		options.profile != "dev" ||
+	if options.profile != "dev" ||
 		!options.profileSet ||
 		len(positionals) != 1 ||
-		positionals[0] != "account-123" {
+		positionals[0] != "01j00000000000000000000002" {
 		t.Fatalf("options = %#v, positionals = %#v", options, positionals)
 	}
 }
@@ -107,9 +105,9 @@ func TestPublicCredentialProviderUsesTheSharedCurrentProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	vaultURL, err := vaultURLForProfile(profile)
-	if err != nil || vaultURL != "https://vault.crcl.es" {
-		t.Fatalf("vault URL = %q, %v", vaultURL, err)
+	prismURL, err := prismURLForProfile(profile)
+	if err != nil || prismURL != "https://prism-dev.circles.ac" {
+		t.Fatalf("Prism URL = %q, %v", prismURL, err)
 	}
 }
 
@@ -130,27 +128,27 @@ func TestCredentialValueIsNotAcceptedAsCommandLineOption(t *testing.T) {
 	}
 }
 
-func TestVaultURLFollowsTheCirclesProfileStage(t *testing.T) {
+func TestPrismURLFollowsTheCirclesProfileStage(t *testing.T) {
 	tests := []struct {
 		name    string
 		profile *credentials.StoredProfile
 		want    string
 		wantErr bool
 	}{
-		{name: "no profile", want: "https://vault.circles.ac"},
+		{name: "no profile", want: "https://prism.circles.ac"},
 		{
 			name: "production",
 			profile: &credentials.StoredProfile{Name: "prod", Config: credentials.ProfileConfig{
 				APIURL: "https://api.circles.ac", AuthURL: "https://auth.circles.ac",
 			}},
-			want: "https://vault.circles.ac",
+			want: "https://prism.circles.ac",
 		},
 		{
 			name: "development",
 			profile: &credentials.StoredProfile{Name: "dev", Config: credentials.ProfileConfig{
 				APIURL: "https://api-dev.circles.ac", AuthURL: "https://auth-dev.circles.ac",
 			}},
-			want: "https://vault.crcl.es",
+			want: "https://prism-dev.circles.ac",
 		},
 		{
 			name: "mixed stages",
@@ -169,15 +167,15 @@ func TestVaultURLFollowsTheCirclesProfileStage(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := vaultURLForProfile(test.profile)
+			got, err := prismURLForProfile(test.profile)
 			if test.wantErr {
 				if err == nil {
-					t.Fatalf("vaultURLForProfile() = %q, want error", got)
+					t.Fatalf("prismURLForProfile() = %q, want error", got)
 				}
 				return
 			}
 			if err != nil || got != test.want {
-				t.Fatalf("vaultURLForProfile() = %q, %v; want %q", got, err, test.want)
+				t.Fatalf("prismURLForProfile() = %q, %v; want %q", got, err, test.want)
 			}
 		})
 	}
@@ -200,7 +198,7 @@ func TestStaticProviderSecretsComeFromInputNotOptions(t *testing.T) {
 	if bundle["api_key"] != "cloudflare-secret" || bundle["account_id"] != "cf-account-123" {
 		t.Fatalf("bundle = %#v", bundle)
 	}
-	if err := validateCommand("cloudflare", "add", []string{"default"}, commonOptions{}); err == nil {
+	if err := validateCommand("cloudflare", "add", nil, commonOptions{}); err == nil {
 		t.Fatal("Cloudflare account ID option was not required")
 	}
 }

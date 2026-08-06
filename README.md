@@ -1,19 +1,15 @@
 # Prism CLI
 
-Public Go CLI for registering provider credentials in Circles Vault. It does
-not contain the private Prism Worker or require Node/Bun at runtime. Vault
-content is encrypted and decrypted by the official `cvlt` client through an
-authenticated localhost bridge; install `cvlt` alongside Prism.
+Public Go CLI for registering provider credentials through Prism. It does not
+contain the private Worker or require Node/Bun/cvlt at runtime. The CLI performs
+OAuth locally, then sends the credential to Prism using the same Circles
+identity that owns the personal Vault.
 
 ## Install
 
 ```sh
 brew install circlesac/tap/prism
 ```
-
-The Homebrew formula installs `cvlt` automatically. For a direct install,
-install `cvlt` first from
-[`circlesac/cvlt-cli`](https://github.com/circlesac/cvlt-cli).
 
 Or install the latest release directly:
 
@@ -40,65 +36,58 @@ can provision a shared profile, but the `crcl` executable is not required when
 Prism runs. Expired OAuth credentials are refreshed and written back by the
 shared provider.
 
-## Provider accounts
+## Provider credentials
 
-Personal Vault is the default:
+Credentials are personal in this release:
 
 ```sh
 prism chatgpt auth login
 prism chatgpt auth list
-prism chatgpt auth remove <account-id>
+prism chatgpt auth remove <credential-id>
 
 prism copilot auth login
 prism gemini auth login
-```
-
-Select an organization Vault explicitly:
-
-```sh
-prism chatgpt auth login --org circlesac
-prism chatgpt auth list --org circlesac
-prism chatgpt auth remove <account-id> --org circlesac
 ```
 
 Static credentials are read from hidden stdin and never accepted as command-line
 arguments:
 
 ```sh
-prism groq auth add default --name personal
-prism mistral auth add default
-prism gemini-ai auth add default
-prism deepseek auth add default
-prism opencode-go auth add default
-prism cloudflare auth add default --provider-account-id <cloudflare-account-id>
-prism vercel auth add default --owner-id <vercel-owner-id>
-prism gemini-app auth add default
+prism groq auth add --name personal
+prism mistral auth add
+prism gemini-ai auth add
+prism deepseek auth add
+prism opencode-go auth add
+prism cloudflare auth add --provider-account-id <cloudflare-account-id>
+prism vercel auth add --owner-id <vercel-owner-id>
+prism gemini-app auth add
 
 prism groq auth list
-prism groq auth remove default
+prism groq auth remove <credential-id>
 ```
 
 Add `--profile <name>` to any command to choose a Circles profile. Login opens
 OpenAI authorization in a browser, verifies PKCE and state on a loopback
-callback, derives the ChatGPT account ID and display name from the returned
-tokens, and upserts that account directly into the selected Vault namespace.
+callback, then Prism derives the provider-native account ID and display name
+again before upserting the credential into the caller's personal Vault.
 Provider tokens are not written to Prism KV or a local Prism credential store.
-They travel only through the authenticated loopback bridge and are encrypted
-by `cvlt` before leaving the machine.
+New records use Vault's application-plaintext service integration so Prism can
+refresh them; existing E2EE records stay E2EE and are updated in place.
 
-First-party production profiles use `vault.circles.ac`. Profiles configured
-with `api-dev.circles.ac` and `auth-dev.circles.ac` use the separate development
-Vault at `vault.crcl.es`:
+First-party production profiles use `prism.circles.ac`. Profiles configured
+with `api-dev.circles.ac` and `auth-dev.circles.ac` use
+`prism-dev.circles.ac`:
 
 ```sh
 prism chatgpt auth login --profile dev-personal
 prism chatgpt auth list --profile dev-personal
 ```
 
-OAuth account IDs and names are derived from provider callbacks. Static
-credentials use the explicit account ID and optional `--name`. Each account is
-stored as a separate `API_CREDENTIAL` item with provider/account tags and a
-stable provider URL. The CLI intentionally has no `set-default` command.
+OAuth account IDs and names are derived from provider tokens or profiles.
+Static credentials have no caller-selected account ID: Prism returns the Vault
+item ID used by `auth remove`, while `--name` is only a friendly label. Each
+credential is a separate `API_CREDENTIAL` item. The CLI intentionally has no
+`set-default` command.
 
 ## Build and test
 
