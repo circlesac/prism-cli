@@ -26,6 +26,11 @@ func TestHelpDocumentsOnlySupportedChatGPTCommands(t *testing.T) {
 	if strings.Contains(output, "set-default") {
 		t.Fatal("help exposed the unsupported ChatGPT set-default command")
 	}
+	for _, internalDetail := range []string{"Vault", "CIRCLES_AUTH_TOKEN", "prism-dev", "E2EE", "application-plaintext"} {
+		if strings.Contains(output, internalDetail) {
+			t.Fatalf("help exposed internal detail %q", internalDetail)
+		}
+	}
 }
 
 func TestChatGPTUsageOutputShowsEveryLimitAndPartialErrors(t *testing.T) {
