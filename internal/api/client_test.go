@@ -28,6 +28,8 @@ func TestCredentialLifecycleUsesPrismAPIWithoutLeakingSecretsInURL(t *testing.T)
 			_, _ = response.Write([]byte(`{"id":"01j00000000000000000000002","provider":"chatgpt","name":"person@example.com"}`))
 		case request.Method == http.MethodGet && request.URL.Path == "/credentials/chatgpt":
 			_, _ = response.Write([]byte(`{"data":[{"id":"01j00000000000000000000002","provider":"chatgpt","name":"person@example.com"}]}`))
+		case request.Method == http.MethodGet && request.URL.Path == "/usage/chatgpt":
+			_, _ = response.Write([]byte(`{"provider":"chatgpt","accounts":[{"id":"01j00000000000000000000002","name":"person@example.com","plan":"pro","observed_at":"2026-08-06T07:25:00Z","limits":[{"name":"default","window":"primary","used_percent":88,"remaining_percent":12,"limit_reached":false,"reset_at":"2026-08-11T00:24:55Z"}]}]}`))
 		case request.Method == http.MethodDelete && request.URL.Path == "/credentials/01j00000000000000000000002":
 			removed = true
 			response.WriteHeader(http.StatusNoContent)
@@ -60,5 +62,9 @@ func TestCredentialLifecycleUsesPrismAPIWithoutLeakingSecretsInURL(t *testing.T)
 	}
 	if !removed {
 		t.Fatal("credential was not removed")
+	}
+	usage, err := client.Usage(context.Background(), "chatgpt")
+	if err != nil || usage.Provider != "chatgpt" || len(usage.Accounts) != 1 || usage.Accounts[0].Limits[0].RemainingPercent != 12 {
+		t.Fatalf("usage = %#v, err = %v", usage, err)
 	}
 }

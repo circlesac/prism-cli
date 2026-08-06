@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	credentials "github.com/circlesac/credentials-go"
+	"github.com/circlesac/prism-cli/internal/api"
 )
 
 func TestHelpDocumentsOnlySupportedChatGPTCommands(t *testing.T) {
@@ -17,13 +18,43 @@ func TestHelpDocumentsOnlySupportedChatGPTCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := stdout.String()
-	for _, command := range []string{"auth login", "auth list", "auth remove"} {
+	for _, command := range []string{"chatgpt usage", "auth login", "auth list", "auth remove"} {
 		if !strings.Contains(output, command) {
 			t.Fatalf("help did not contain %q", command)
 		}
 	}
 	if strings.Contains(output, "set-default") {
 		t.Fatal("help exposed the unsupported ChatGPT set-default command")
+	}
+}
+
+func TestChatGPTUsageOutputShowsEveryLimitAndPartialErrors(t *testing.T) {
+	plan := "pro"
+	reset := "2026-08-11T00:24:55Z"
+	usage := api.ProviderUsage{Provider: "chatgpt", Accounts: []api.UsageAccount{
+		{
+			Name: "person@example.com",
+			Plan: &plan,
+			Limits: []api.UsageLimit{{
+				Name: "default", Window: "primary", UsedPercent: 88,
+				RemainingPercent: 12, ResetAt: &reset,
+			}},
+		},
+		{
+			Name:  "other@example.com",
+			Error: &api.UsageError{Code: "usage_unavailable", Message: "ChatGPT usage is unavailable"},
+		},
+	}}
+	var output bytes.Buffer
+	printUsage(&output, usage)
+	for _, expected := range []string{
+		"NAME\tPLAN\tLIMIT\tWINDOW\tUSED\tREMAINING\tRESET",
+		"person@example.com\tpro\tdefault\tprimary\t88%\t12%\t2026-08-11T00:24:55Z",
+		"other@example.com\t-\t-\t-\t-\t-\tERROR: ChatGPT usage is unavailable",
+	} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("output did not contain %q:\n%s", expected, output.String())
+		}
 	}
 }
 
