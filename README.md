@@ -66,7 +66,7 @@ Add the following to `~/.codex/config.toml`. Replace `/opt/homebrew/bin/crcl`
 with the path printed by the command above.
 
 ```toml
-model = "gpt-5.6"
+model = "gpt-5.6-sol"
 model_provider = "prism"
 model_reasoning_effort = "xhigh"
 
@@ -99,19 +99,25 @@ prism chatgpt usage
 Install Claude Code so that `claude` is available on `PATH`, then use the Claude Code interface and tools with any model supported by Prism:
 
 ```sh
-prism claude --model gpt-5.6
+prism claude --model gpt-5.6-sol
 ```
 
-This example uses `gpt-5.6`; replace it with another Prism-supported model when needed. Pass a Circles profile before any Claude Code arguments:
+Use Claude Code's Ultracode dynamic workflow with GPT-5.6 Sol:
 
 ```sh
-prism claude --profile <name> --model gpt-5.6
+prism claude --model gpt-5.6-sol --effort ultracode
+```
+
+These examples use `gpt-5.6-sol`; replace it with another Prism-supported model when needed. Pass a Circles profile before any Claude Code arguments:
+
+```sh
+prism claude --profile <name> --model gpt-5.6-sol
 ```
 
 Verify the setup:
 
 ```sh
-prism claude --model gpt-5.6 --print --tools "" -- \
+prism claude --model gpt-5.6-sol --print --tools "" -- \
   'Do not use any tools. Reply with exactly PRISM_CLAUDE_MODEL_OK.'
 ```
 

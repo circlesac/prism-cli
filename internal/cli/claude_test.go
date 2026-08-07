@@ -13,7 +13,7 @@ import (
 
 func TestClaudeOptionsKeepClaudeArgumentsAndConsumeProfile(t *testing.T) {
 	options, args, err := parseClaudeOptions([]string{
-		"--model", "gpt-5.6", "--profile=dev:person@example.com", "--", "prompt",
+		"--model", "gpt-5.6-sol", "--profile=dev:person@example.com", "--", "prompt",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +21,7 @@ func TestClaudeOptionsKeepClaudeArgumentsAndConsumeProfile(t *testing.T) {
 	if options.profile != "dev:person@example.com" || !options.profileSet {
 		t.Fatalf("options = %#v", options)
 	}
-	want := []string{"--model", "gpt-5.6", "--", "prompt"}
+	want := []string{"--model", "gpt-5.6-sol", "--", "prompt"}
 	if strings.Join(args, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("args = %#v; want %#v", args, want)
 	}
