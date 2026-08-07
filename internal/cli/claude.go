@@ -26,19 +26,15 @@ type claudeBridge struct {
 }
 
 func runClaudeCommand(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
-	options, claudeArgs, err := parseClaudeOptions(args)
-	if err != nil {
-		return err
-	}
-	if options.help {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		printClaudeHelp(stdout)
 		return nil
 	}
-	client, err := prismClient(ctx, options)
+	client, err := prismClient(ctx, commonOptions{})
 	if err != nil {
 		return err
 	}
-	return runClaude(ctx, client.BaseURL, client.Token, claudeArgs, os.Stdin, stdout, stderr)
+	return runClaude(ctx, client.BaseURL, client.Token, args, os.Stdin, stdout, stderr)
 }
 
 func runClaude(
@@ -149,42 +145,12 @@ func claudeEnvironment(environment []string, baseURL string, credential string) 
 	)
 }
 
-func parseClaudeOptions(args []string) (commonOptions, []string, error) {
-	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		return commonOptions{help: true}, nil, nil
-	}
-	var options commonOptions
-	claudeArgs := make([]string, 0, len(args))
-	for index := 0; index < len(args); index++ {
-		argument := args[index]
-		switch {
-		case argument == "--":
-			claudeArgs = append(claudeArgs, args[index:]...)
-			return options, claudeArgs, nil
-		case argument == "--profile":
-			index++
-			if index >= len(args) || args[index] == "" {
-				return commonOptions{}, nil, errors.New("--profile requires a value")
-			}
-			options.profile = args[index]
-			options.profileSet = true
-		case strings.HasPrefix(argument, "--profile="):
-			options.profile = strings.TrimPrefix(argument, "--profile=")
-			if options.profile == "" {
-				return commonOptions{}, nil, errors.New("--profile requires a value")
-			}
-			options.profileSet = true
-		default:
-			claudeArgs = append(claudeArgs, argument)
-		}
-	}
-	return options, claudeArgs, nil
-}
-
 func printClaudeHelp(output io.Writer) {
 	fmt.Fprintln(output, `Usage:
-  prism claude [--profile <name>] [claude arguments...]
+  prism claude [claude arguments...]
 
 Pass --model with any model supported by Prism.
+Uses the current Circles profile. Run 'crcl auth status' to list profiles and
+'crcl use <profile>' to switch before launching Claude Code.
 Run 'claude --help' for Claude Code options.`)
 }

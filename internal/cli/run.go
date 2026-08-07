@@ -458,7 +458,7 @@ func printHelp(output io.Writer) {
 	fmt.Fprintln(output, `Prism provider credential manager and client launcher
 
 Usage:
-  prism claude [--profile <name>] [claude arguments...]
+  prism claude [claude arguments...]
   prism chatgpt usage [--profile <name>]
   prism chatgpt auth login [--profile <name>]
   prism copilot auth login [--profile <name>]

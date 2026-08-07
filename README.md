@@ -108,10 +108,11 @@ Use Claude Code's Ultracode dynamic workflow with GPT-5.6 Sol:
 prism claude --model gpt-5.6-sol --effort ultracode
 ```
 
-These examples use `gpt-5.6-sol`; replace it with another Prism-supported model when needed. Pass a Circles profile before any Claude Code arguments:
+These examples use `gpt-5.6-sol`; replace it with another Prism-supported model when needed. `prism claude` uses the current Circles profile. List available profiles and switch the current selection before launching Claude Code when needed:
 
 ```sh
-prism claude --profile <name> --model gpt-5.6-sol
+crcl auth status
+crcl use <profile>
 ```
 
 Verify the setup:
