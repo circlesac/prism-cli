@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	credentials "github.com/circlesac/credentials-go"
+	credentials "github.com/circlesac/credentials/go"
 	"github.com/circlesac/prism-cli/internal/api"
 )
 

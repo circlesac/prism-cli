@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	credentials "github.com/circlesac/credentials-go"
+	credentials "github.com/circlesac/credentials/go"
 	"github.com/circlesac/prism-cli/internal/api"
 	"github.com/circlesac/prism-cli/internal/chatgpt"
 	"github.com/circlesac/prism-cli/internal/copilot"
