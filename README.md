@@ -30,6 +30,7 @@ prism chatgpt auth remove <credential-id>
 ```
 
 Run `prism chatgpt auth login` again to add another ChatGPT account.
+Usage reset times are shown in the local timezone with the remaining time.
 
 ## Other providers
 

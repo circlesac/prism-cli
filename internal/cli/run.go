@@ -174,6 +174,10 @@ func validateCommand(provider string, command string, positionals []string, opti
 }
 
 func printUsage(output io.Writer, usage api.ProviderUsage) {
+	printUsageAt(output, usage, time.Now())
+}
+
+func printUsageAt(output io.Writer, usage api.ProviderUsage, now time.Time) {
 	if len(usage.Accounts) == 0 {
 		fmt.Fprintf(output, "No %s credentials are registered.\n", usage.Provider)
 		return
@@ -197,7 +201,7 @@ func printUsage(output io.Writer, usage api.ProviderUsage) {
 			}
 			reset := "-"
 			if limit.ResetAt != nil {
-				reset = formatUsageReset(*limit.ResetAt)
+				reset = formatUsageReset(*limit.ResetAt, now)
 			}
 			rows = append(rows, []string{
 				name,
@@ -213,12 +217,56 @@ func printUsage(output io.Writer, usage api.ProviderUsage) {
 	printTable(output, rows, map[int]bool{4: true, 5: true})
 }
 
-func formatUsageReset(value string) string {
+func formatUsageReset(value string, now time.Time) string {
 	reset, err := time.Parse(time.RFC3339, value)
 	if err != nil {
 		return value
 	}
-	return reset.UTC().Format("2006-01-02 15:04 MST")
+	return fmt.Sprintf(
+		"%s (%s)",
+		reset.In(now.Location()).Format("2006-01-02 15:04 MST"),
+		formatUsageTimeRemaining(reset.Sub(now)),
+	)
+}
+
+func formatUsageTimeRemaining(remaining time.Duration) string {
+	if remaining == 0 {
+		return "now"
+	}
+	past := remaining < 0
+	if past {
+		remaining = -remaining
+	}
+	if remaining < time.Minute {
+		if past {
+			return "just now"
+		}
+		return "in <1m"
+	}
+	remaining = remaining.Truncate(time.Minute)
+	days := remaining / (24 * time.Hour)
+	remaining %= 24 * time.Hour
+	hours := remaining / time.Hour
+	minutes := remaining % time.Hour / time.Minute
+	value := ""
+	switch {
+	case days > 0:
+		value = fmt.Sprintf("%dd", days)
+		if hours > 0 {
+			value += fmt.Sprintf(" %dh", hours)
+		}
+	case hours > 0:
+		value = fmt.Sprintf("%dh", hours)
+		if minutes > 0 {
+			value += fmt.Sprintf(" %dm", minutes)
+		}
+	default:
+		value = fmt.Sprintf("%dm", minutes)
+	}
+	if past {
+		return value + " ago"
+	}
+	return "in " + value
 }
 
 func printTable(output io.Writer, rows [][]string, rightAligned map[int]bool) {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	credentials "github.com/circlesac/credentials/go"
 	"github.com/circlesac/prism-cli/internal/api"
@@ -57,17 +58,42 @@ func TestChatGPTUsageOutputShowsEveryLimitAndPartialErrors(t *testing.T) {
 		},
 	}}
 	var output bytes.Buffer
-	printUsage(&output, usage)
+	printUsageAt(&output, usage, time.Date(2026, 8, 7, 9, 24, 55, 0, time.FixedZone("KST", 9*60*60)))
 	want := `┌────────────────────┬──────┬─────────────────────┬─────────┬──────┬───────────┬─────────────────────────────────────┐
 │ NAME               │ PLAN │ LIMIT               │ WINDOW  │ USED │ REMAINING │ RESET                               │
 ├────────────────────┼──────┼─────────────────────┼─────────┼──────┼───────────┼─────────────────────────────────────┤
-│ person@example.com │ pro  │ default             │ primary │  88% │       12% │ 2026-08-11 00:24 UTC                │
+│ person@example.com │ pro  │ default             │ primary │  88% │       12% │ 2026-08-11 09:24 KST (in 4d)        │
 │                    │      │ GPT-5.3-Codex-Spark │ primary │   0% │      100% │ -                                   │
 │ other@example.com  │ -    │ -                   │ -       │    - │         - │ ERROR: ChatGPT usage is unavailable │
 └────────────────────┴──────┴─────────────────────┴─────────┴──────┴───────────┴─────────────────────────────────────┘
 `
 	if output.String() != want {
 		t.Fatalf("output =\n%s\nwant:\n%s", output.String(), want)
+	}
+}
+
+func TestUsageResetFormattingUsesLocalTimeAndFriendlyRemainingTime(t *testing.T) {
+	location := time.FixedZone("KST", 9*60*60)
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, location)
+	for _, test := range []struct {
+		name  string
+		reset time.Time
+		want  string
+	}{
+		{name: "minutes", reset: now.Add(42*time.Minute + 30*time.Second), want: "2026-08-07 12:42 KST (in 42m)"},
+		{name: "hours", reset: now.Add(time.Hour + 37*time.Minute), want: "2026-08-07 13:37 KST (in 1h 37m)"},
+		{name: "days", reset: now.Add(2*24*time.Hour + 5*time.Hour), want: "2026-08-09 17:00 KST (in 2d 5h)"},
+		{name: "past", reset: now.Add(-3 * time.Minute), want: "2026-08-07 11:57 KST (3m ago)"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := formatUsageReset(test.reset.UTC().Format(time.RFC3339), now)
+			if got != test.want {
+				t.Fatalf("formatUsageReset() = %q, want %q", got, test.want)
+			}
+		})
+	}
+	if got := formatUsageReset("not-a-time", now); got != "not-a-time" {
+		t.Fatalf("invalid reset = %q", got)
 	}
 }
 
