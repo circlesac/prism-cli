@@ -56,32 +56,17 @@ prism groq auth remove <credential-id>
 
 ## Codex
 
-Find the `crcl` executable:
+Route Codex App and CLI tasks through Prism:
 
 ```sh
-command -v crcl
+prism codex enable
+prism codex status
 ```
 
-Add the following to `~/.codex/config.toml`. Replace `/opt/homebrew/bin/crcl`
-with the path printed by the command above.
-
-```toml
-model = "gpt-5.6-sol"
-model_provider = "prism"
-model_reasoning_effort = "xhigh"
-
-[model_providers.prism]
-name = "Prism"
-base_url = "https://prism.circles.ac/v1"
-wire_api = "responses"
-
-[model_providers.prism.auth]
-command = "/opt/homebrew/bin/crcl"
-args = ["auth", "token"]
-```
-
-Open a new Codex task after changing the configuration. The CLI can be started
-normally:
+`prism codex enable` selects `gpt-5.6-sol`, uses the model's default reasoning
+effort, and updates the shared user-level Codex configuration. Open a new Codex
+task after enabling it. The App and CLI then use the same Prism configuration,
+and the CLI can still be started normally:
 
 ```sh
 codex
@@ -93,6 +78,16 @@ Verify the setup:
 codex exec --ephemeral 'Do not use any tools. Reply with exactly PRISM_OK.'
 prism chatgpt usage
 ```
+
+Restore the Codex settings that were present before Prism was enabled:
+
+```sh
+prism codex disable
+```
+
+Prism only restores settings that still match what `enable` applied. If a
+managed setting was edited afterward, `prism codex status` reports drift and
+`disable` leaves the changed setting untouched.
 
 ## Claude Code
 
@@ -108,12 +103,9 @@ Use Claude Code's Ultracode dynamic workflow with GPT-5.6 Sol:
 prism claude --model gpt-5.6-sol --effort ultracode
 ```
 
-These examples use `gpt-5.6-sol`; replace it with another Prism-supported model when needed. `prism claude` uses the current Circles profile. List available profiles and switch the current selection before launching Claude Code when needed:
-
-```sh
-crcl auth status
-crcl use <profile>
-```
+These examples use `gpt-5.6-sol`; replace it with another Prism-supported
+model when needed. `prism claude` launches the installed Claude Code CLI and
+passes its arguments through unchanged.
 
 Verify the setup:
 

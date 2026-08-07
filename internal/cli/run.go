@@ -46,6 +46,9 @@ func Run(
 	if args[0] == "claude" {
 		return runClaudeCommand(ctx, args[1:], stdout, stderr)
 	}
+	if args[0] == "codex" {
+		return runCodexCommand(args[1:], stdout)
+	}
 	providerName := strings.ToLower(args[0])
 	if !api.SupportedProvider(providerName) {
 		return fmt.Errorf("unsupported provider %q", providerName)
@@ -455,10 +458,11 @@ func parseCommonOptions(args []string) (commonOptions, []string, error) {
 }
 
 func printHelp(output io.Writer) {
-	fmt.Fprintln(output, `Prism provider credential manager and client launcher
+	fmt.Fprintln(output, `Prism provider credential manager and client configuration tool
 
 Usage:
   prism claude [claude arguments...]
+  prism codex enable|disable|status
   prism chatgpt usage [--profile <name>]
   prism chatgpt auth login [--profile <name>]
   prism copilot auth login [--profile <name>]
