@@ -73,7 +73,7 @@ func runClaude(
 
 func startClaudeBridge(prismURL string, prismCredential string, stderr io.Writer) (*claudeBridge, error) {
 	target, err := url.Parse(prismURL)
-	if err != nil || target.Scheme != "https" && target.Scheme != "http" || target.Host == "" {
+	if err != nil || (target.Scheme != "https" && target.Scheme != "http") || target.Host == "" {
 		return nil, errors.New("Prism URL is invalid")
 	}
 	if strings.TrimSpace(prismCredential) == "" || strings.ContainsAny(prismCredential, " \t\r\n") {
@@ -108,11 +108,16 @@ func startClaudeBridge(prismURL string, prismCredential string, stderr io.Writer
 		}
 		proxy.ServeHTTP(response, request)
 	})
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, errors.New("could not start the local Claude bridge")
 	}
-	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	go func() {
 		_ = server.Serve(listener)
 	}()
@@ -134,7 +139,15 @@ func claudeEnvironment(environment []string, baseURL string, credential string) 
 	for _, entry := range environment {
 		name, _, _ := strings.Cut(entry, "=")
 		switch strings.ToUpper(name) {
-		case "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY":
+		case "ANTHROPIC_BASE_URL",
+			"ANTHROPIC_AUTH_TOKEN",
+			"ANTHROPIC_API_KEY",
+			"CLAUDE_CODE_USE_BEDROCK",
+			"CLAUDE_CODE_USE_VERTEX",
+			"ANTHROPIC_BEDROCK_BASE_URL",
+			"ANTHROPIC_VERTEX_BASE_URL",
+			"ANTHROPIC_VERTEX_PROJECT_ID",
+			"CLOUD_ML_REGION":
 			continue
 		}
 		filtered = append(filtered, entry)
@@ -146,7 +159,7 @@ func claudeEnvironment(environment []string, baseURL string, credential string) 
 }
 
 func printClaudeHelp(output io.Writer) {
-	fmt.Fprintln(output, `Usage:
+	_, _ = fmt.Fprintln(output, `Usage:
   prism claude [claude arguments...]
 
 Pass --model with any model supported by Prism.

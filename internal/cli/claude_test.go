@@ -30,9 +30,25 @@ func TestClaudeEnvironmentReplacesExistingAnthropicCredentials(t *testing.T) {
 		"ANTHROPIC_BASE_URL=https://api.anthropic.com",
 		"ANTHROPIC_AUTH_TOKEN=old-token",
 		"ANTHROPIC_API_KEY=old-key",
+		"CLAUDE_CODE_USE_BEDROCK=1",
+		"CLAUDE_CODE_USE_VERTEX=1",
+		"ANTHROPIC_BEDROCK_BASE_URL=https://bedrock.example.com",
+		"ANTHROPIC_VERTEX_BASE_URL=https://vertex.example.com",
+		"ANTHROPIC_VERTEX_PROJECT_ID=example-project",
+		"CLOUD_ML_REGION=us-east5",
 	}, "http://127.0.0.1:12345", "local-token")
 	joined := strings.Join(environment, "\n")
-	for _, unwanted := range []string{"api.anthropic.com", "old-token", "old-key"} {
+	for _, unwanted := range []string{
+		"api.anthropic.com",
+		"old-token",
+		"old-key",
+		"CLAUDE_CODE_USE_BEDROCK",
+		"CLAUDE_CODE_USE_VERTEX",
+		"bedrock.example.com",
+		"vertex.example.com",
+		"example-project",
+		"us-east5",
+	} {
 		if strings.Contains(joined, unwanted) {
 			t.Fatalf("environment retained %q: %s", unwanted, joined)
 		}
@@ -72,16 +88,27 @@ func TestClaudeBridgeAuthenticatesLocallyAndForwardsTheCirclesCredential(t *test
 	}
 	defer bridge.close()
 
-	unauthorized, err := http.Post(bridge.url+"/v1/messages?beta=true", "application/json", strings.NewReader("{}"))
+	unauthorizedRequest, err := http.NewRequestWithContext(
+		t.Context(), http.MethodPost, bridge.url+"/v1/messages?beta=true", strings.NewReader("{}"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	unauthorized.Body.Close()
+	unauthorizedRequest.Header.Set("Content-Type", "application/json")
+	unauthorized, err := http.DefaultClient.Do(unauthorizedRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unauthorized.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if unauthorized.StatusCode != http.StatusUnauthorized || requests.Load() != 0 {
 		t.Fatalf("unauthorized status/requests = %d/%d", unauthorized.StatusCode, requests.Load())
 	}
 
-	request, err := http.NewRequest(http.MethodPost, bridge.url+"/v1/messages?beta=true", strings.NewReader("{}"))
+	request, err := http.NewRequestWithContext(
+		t.Context(), http.MethodPost, bridge.url+"/v1/messages?beta=true", strings.NewReader("{}"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
