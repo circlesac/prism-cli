@@ -12,13 +12,13 @@ import (
 	"github.com/circlesac/prism-cli/internal/api"
 )
 
-func TestHelpDocumentsOnlySupportedChatGPTCommands(t *testing.T) {
+func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 	var stdout bytes.Buffer
 	if err := Run(context.Background(), []string{"help"}, &stdout, &bytes.Buffer{}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	output := stdout.String()
-	for _, command := range []string{"chatgpt usage", "auth login", "auth list", "auth remove"} {
+	for _, command := range []string{"prism claude", "chatgpt usage", "auth login", "auth list", "auth remove"} {
 		if !strings.Contains(output, command) {
 			t.Fatalf("help did not contain %q", command)
 		}
