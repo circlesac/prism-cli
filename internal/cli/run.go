@@ -43,6 +43,9 @@ func Run(
 		fmt.Fprintln(stdout, version)
 		return nil
 	}
+	if args[0] == "claude" {
+		return runClaudeCommand(ctx, args[1:], stdout, stderr)
+	}
 	providerName := strings.ToLower(args[0])
 	if !api.SupportedProvider(providerName) {
 		return fmt.Errorf("unsupported provider %q", providerName)
@@ -75,31 +78,10 @@ func Run(
 		return err
 	}
 
-	var credentialProvider *credentials.Provider
-	if options.profileSet {
-		credentialProvider, err = credentials.New(credentials.WithProfile(options.profile))
-	} else {
-		credentialProvider, err = credentials.New()
-	}
+	client, err := prismClient(ctx, options)
 	if err != nil {
 		return err
 	}
-	circlesCredential, err := credentialProvider.Resolve(ctx)
-	if err != nil {
-		return err
-	}
-	var selectedProfile *credentials.StoredProfile
-	if circlesCredential.Source.Type == credentials.SourceProfile {
-		selectedProfile, err = credentialProvider.GetProfile(ctx)
-		if err != nil {
-			return err
-		}
-	}
-	prismURL, err := prismURLForProfile(selectedProfile)
-	if err != nil {
-		return err
-	}
-	client := api.Client{BaseURL: prismURL, Token: circlesCredential.Value}
 
 	switch command {
 	case "usage":
@@ -389,6 +371,35 @@ func prismURLForProfile(profile *credentials.StoredProfile) (string, error) {
 	return "https://prism.circles.ac", nil
 }
 
+func prismClient(ctx context.Context, options commonOptions) (api.Client, error) {
+	var credentialProvider *credentials.Provider
+	var err error
+	if options.profileSet {
+		credentialProvider, err = credentials.New(credentials.WithProfile(options.profile))
+	} else {
+		credentialProvider, err = credentials.New()
+	}
+	if err != nil {
+		return api.Client{}, err
+	}
+	circlesCredential, err := credentialProvider.Resolve(ctx)
+	if err != nil {
+		return api.Client{}, err
+	}
+	var selectedProfile *credentials.StoredProfile
+	if circlesCredential.Source.Type == credentials.SourceProfile {
+		selectedProfile, err = credentialProvider.GetProfile(ctx)
+		if err != nil {
+			return api.Client{}, err
+		}
+	}
+	prismURL, err := prismURLForProfile(selectedProfile)
+	if err != nil {
+		return api.Client{}, err
+	}
+	return api.Client{BaseURL: prismURL, Token: circlesCredential.Value}, nil
+}
+
 func parseCommonOptions(args []string) (commonOptions, []string, error) {
 	var options commonOptions
 	var positionals []string
@@ -444,9 +455,10 @@ func parseCommonOptions(args []string) (commonOptions, []string, error) {
 }
 
 func printHelp(output io.Writer) {
-	fmt.Fprintln(output, `Prism provider credential manager
+	fmt.Fprintln(output, `Prism provider credential manager and client launcher
 
 Usage:
+  prism claude [claude arguments...]
   prism chatgpt usage [--profile <name>]
   prism chatgpt auth login [--profile <name>]
   prism copilot auth login [--profile <name>]
