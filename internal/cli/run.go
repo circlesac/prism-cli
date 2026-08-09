@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"os"
 	"strings"
@@ -182,14 +183,14 @@ func printUsageAt(output io.Writer, usage api.ProviderUsage, now time.Time) {
 		fmt.Fprintf(output, "No %s credentials are registered.\n", usage.Provider)
 		return
 	}
-	rows := [][]string{{"NAME", "PLAN", "LIMIT", "WINDOW", "USED", "REMAINING", "RESET"}}
+	rows := [][]string{{"NAME", "PLAN", "LIMIT", "WINDOW", "USED", "REMAINING", "RESET", "PACE"}}
 	for _, account := range usage.Accounts {
 		plan := "-"
 		if account.Plan != nil && *account.Plan != "" {
 			plan = *account.Plan
 		}
 		if account.Error != nil {
-			rows = append(rows, []string{account.Name, plan, "-", "-", "-", "-", "ERROR: " + account.Error.Message})
+			rows = append(rows, []string{account.Name, plan, "-", "-", "-", "-", "ERROR: " + account.Error.Message, "-"})
 			continue
 		}
 		for index, limit := range account.Limits {
@@ -203,6 +204,7 @@ func printUsageAt(output io.Writer, usage api.ProviderUsage, now time.Time) {
 			if limit.ResetAt != nil {
 				reset = formatUsageReset(*limit.ResetAt, now)
 			}
+			pace := usagePace(limit, now)
 			rows = append(rows, []string{
 				name,
 				rowPlan,
@@ -211,10 +213,67 @@ func printUsageAt(output io.Writer, usage api.ProviderUsage, now time.Time) {
 				fmt.Sprintf("%g%%", limit.UsedPercent),
 				fmt.Sprintf("%g%%", limit.RemainingPercent),
 				reset,
+				pace,
 			})
 		}
 	}
 	printTable(output, rows, map[int]bool{4: true, 5: true})
+}
+
+func usagePace(limit api.UsageLimit, now time.Time) string {
+	if limit.LimitReached || limit.UsedPercent >= 100 {
+		return "LIMIT REACHED"
+	}
+	if limit.WindowSeconds == nil || limit.ResetAt == nil || *limit.WindowSeconds <= 0 {
+		return "-"
+	}
+
+	reset, err := time.Parse(time.RFC3339, *limit.ResetAt)
+	if err != nil {
+		return "-"
+	}
+	window := time.Duration(*limit.WindowSeconds) * time.Second
+	remaining := reset.Sub(now)
+	if remaining <= 0 {
+		return "-"
+	}
+
+	elapsed := window - remaining
+	if elapsed < maxDuration(time.Minute, window/100) {
+		return "TOO EARLY"
+	}
+
+	projected := limit.UsedPercent / elapsed.Seconds() * window.Seconds()
+	if limit.UsedPercent <= 0 {
+		return "OK · ~100% left at reset"
+	}
+	if projected >= 100 {
+		rate := limit.UsedPercent / elapsed.Seconds()
+		if math.Abs(projected-100) < 1e-9 {
+			return "RUNS OUT at reset"
+		}
+		runOut := time.Duration((100 - limit.UsedPercent) / rate * float64(time.Second))
+		if runOut >= remaining {
+			return "RUNS OUT at reset"
+		}
+		if runOut <= 0 {
+			return "RUNS OUT"
+		}
+		return "RUNS OUT in " + strings.TrimPrefix(formatUsageTimeRemaining(runOut), "in ")
+	}
+	if projected <= 90 {
+		remainingPercent := max(0, int(math.Round(100-projected)))
+		return fmt.Sprintf("OK · ~%d%% left at reset", remainingPercent)
+	}
+	spare := max(1, int(math.Round(100-projected)))
+	return fmt.Sprintf("CLOSE · ~%d%% spare at reset", spare)
+}
+
+func maxDuration(a, b time.Duration) time.Duration {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func formatUsageReset(value string, now time.Time) string {

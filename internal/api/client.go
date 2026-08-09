@@ -32,6 +32,7 @@ type UsageLimit struct {
 	RemainingPercent float64 `json:"remaining_percent"`
 	LimitReached     bool    `json:"limit_reached"`
 	ResetAt          *string `json:"reset_at"`
+	WindowSeconds    *int    `json:"window_seconds"`
 }
 
 type UsageError struct {
