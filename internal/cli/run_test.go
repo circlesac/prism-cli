@@ -165,14 +165,14 @@ func TestChatGPTUsageOutputShowsEveryLimitAndPartialErrors(t *testing.T) {
 	}}
 	var output bytes.Buffer
 	printUsageAt(&output, usage, time.Date(2026, 8, 7, 9, 24, 55, 0, time.FixedZone("KST", 9*60*60)))
-	want := `┌────────────────────┬──────┬─────────────────────┬─────────┬──────┬───────────┬─────────────────────────────────────┬────────────────────┐
-│ NAME               │ PLAN │ LIMIT               │ WINDOW  │ USED │ REMAINING │ RESET                               │ PACE               │
-├────────────────────┼──────┼─────────────────────┼─────────┼──────┼───────────┼─────────────────────────────────────┼────────────────────┤
-│ person@example.com │ pro  │ default             │ primary │  88% │       12% │ 2026-08-11 09:24 KST (in 4d)        │ RUNS OUT in 9h 49m │
-│                    │      │ GPT-5.3-Codex-Spark │ primary │   0% │      100% │ -                                   │ -                  │
-├────────────────────┼──────┼─────────────────────┼─────────┼──────┼───────────┼─────────────────────────────────────┼────────────────────┤
-│ other@example.com  │ -    │ -                   │ -       │    - │         - │ ERROR: ChatGPT usage is unavailable │ -                  │
-└────────────────────┴──────┴─────────────────────┴─────────┴──────┴───────────┴─────────────────────────────────────┴────────────────────┘
+	want := `┌────────────────────┬──────┬─────────────────────┬─────────┬──────┬───────────┬─────────────────────────────────────┬───────────────────────┐
+│ NAME               │ PLAN │ LIMIT               │ WINDOW  │ USED │ REMAINING │ RESET                               │ PACE                  │
+├────────────────────┼──────┼─────────────────────┼─────────┼──────┼───────────┼─────────────────────────────────────┼───────────────────────┤
+│ person@example.com │ pro  │ default             │ primary │  88% │       12% │ 2026-08-11 09:24 KST (in 4d)        │ 🔥 RUNS OUT in 9h 49m │
+│                    │      │ GPT-5.3-Codex-Spark │ primary │   0% │      100% │ -                                   │ -                     │
+├────────────────────┼──────┼─────────────────────┼─────────┼──────┼───────────┼─────────────────────────────────────┼───────────────────────┤
+│ other@example.com  │ -    │ -                   │ -       │    - │         - │ ERROR: ChatGPT usage is unavailable │ -                     │
+└────────────────────┴──────┴─────────────────────┴─────────┴──────┴───────────┴─────────────────────────────────────┴───────────────────────┘
 `
 	if output.String() != want {
 		t.Fatalf("output =\n%s\nwant:\n%s", output.String(), want)
@@ -199,27 +199,27 @@ func TestUsagePaceProjectsQuotaAtReset(t *testing.T) {
 		{
 			name:  "healthy",
 			limit: api.UsageLimit{UsedPercent: 30, ResetAt: resetAt(0.5), WindowSeconds: window()},
-			want:  "OK · ~40% left at reset",
+			want:  "✅ OK · ~40% left at reset",
 		},
 		{
 			name:  "close",
 			limit: api.UsageLimit{UsedPercent: 46, ResetAt: resetAt(0.5), WindowSeconds: window()},
-			want:  "CLOSE · ~8% spare at reset",
+			want:  "⚠️ CLOSE · ~8% spare at reset",
 		},
 		{
 			name:  "running out",
 			limit: api.UsageLimit{UsedPercent: 60, ResetAt: resetAt(0.5), WindowSeconds: window()},
-			want:  "RUNS OUT in 2d 8h",
+			want:  "🔥 RUNS OUT in 2d 8h",
 		},
 		{
 			name:  "limit reached",
 			limit: api.UsageLimit{UsedPercent: 100, LimitReached: true, ResetAt: resetAt(0.5), WindowSeconds: window()},
-			want:  "LIMIT REACHED",
+			want:  "⛔ LIMIT REACHED",
 		},
 		{
 			name:  "too early",
 			limit: api.UsageLimit{UsedPercent: 1, ResetAt: resetAt(0.005), WindowSeconds: window()},
-			want:  "TOO EARLY",
+			want:  "⏳ TOO EARLY",
 		},
 		{
 			name:  "missing duration",
@@ -229,12 +229,12 @@ func TestUsagePaceProjectsQuotaAtReset(t *testing.T) {
 		{
 			name:  "exactly at limit",
 			limit: api.UsageLimit{UsedPercent: 50, ResetAt: resetAt(0.5), WindowSeconds: window()},
-			want:  "RUNS OUT at reset",
+			want:  "🔥 RUNS OUT at reset",
 		},
 		{
 			name:  "unused",
 			limit: api.UsageLimit{UsedPercent: 0, ResetAt: resetAt(0.5), WindowSeconds: window()},
-			want:  "OK · ~100% left at reset",
+			want:  "✅ OK · ~100% left at reset",
 		},
 	}
 
@@ -244,6 +244,20 @@ func TestUsagePaceProjectsQuotaAtReset(t *testing.T) {
 				t.Fatalf("usagePace() = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestTableDisplayWidthHandlesUsageEmoji(t *testing.T) {
+	for value, want := range map[string]int{
+		"✅ OK":       5,
+		"⚠️ CLOSE":   8,
+		"🔥 RUNS OUT": 11,
+		"⛔ LIMIT":    8,
+		"⏳ EARLY":    8,
+	} {
+		if got := tableDisplayWidth(value); got != want {
+			t.Fatalf("tableDisplayWidth(%q) = %d, want %d", value, got, want)
+		}
 	}
 }
 
