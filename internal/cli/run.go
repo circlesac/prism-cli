@@ -22,6 +22,13 @@ import (
 )
 
 var fetchOpenCodeGoUsage = opencodego.Fetch
+var fetchChatGPTUsage = func(ctx context.Context, options commonOptions) (api.ProviderUsage, error) {
+	client, err := prismClient(ctx, options)
+	if err != nil {
+		return api.ProviderUsage{}, err
+	}
+	return client.Usage(ctx, "chatgpt")
+}
 
 type commonOptions struct {
 	profile           string
@@ -46,6 +53,9 @@ func Run(
 	if args[0] == "version" || args[0] == "--version" {
 		fmt.Fprintln(stdout, version)
 		return nil
+	}
+	if args[0] == "usage" {
+		return runCombinedUsage(ctx, args[1:], stdout)
 	}
 	if args[0] == "claude" {
 		return runClaudeCommand(ctx, args[1:], stdout, stderr)
@@ -84,8 +94,13 @@ func Run(
 	if err := validateCommand(providerName, command, positionals, options); err != nil {
 		return err
 	}
-	if command == "usage" && providerName == "opencode-go" {
-		usage, err := fetchOpenCodeGoUsage(ctx)
+	if command == "usage" {
+		var usage api.ProviderUsage
+		if providerName == "opencode-go" {
+			usage, err = fetchOpenCodeGoUsage(ctx)
+		} else {
+			usage, err = fetchChatGPTUsage(ctx, options)
+		}
 		if err != nil {
 			return err
 		}
@@ -99,12 +114,6 @@ func Run(
 	}
 
 	switch command {
-	case "usage":
-		usage, err := client.Usage(ctx, providerName)
-		if err != nil {
-			return err
-		}
-		printUsage(stdout, usage)
 	case "login":
 		return loginProvider(ctx, providerName, client, stdout)
 	case "add":
@@ -135,6 +144,65 @@ func Run(
 			return err
 		}
 		fmt.Fprintf(stdout, "Removed %s credential %s.\n", providerName, positionals[0])
+	}
+	return nil
+}
+
+func runCombinedUsage(ctx context.Context, args []string, output io.Writer) error {
+	options, positionals, err := parseCommonOptions(args)
+	if err != nil {
+		return err
+	}
+	if options.help {
+		fmt.Fprintln(output, "Usage:\n  prism usage [--profile <name>]")
+		return nil
+	}
+	if len(positionals) != 0 {
+		return fmt.Errorf("unexpected argument %q", positionals[0])
+	}
+	if options.name != "" || options.providerAccountID != "" || options.ownerID != "" {
+		return errors.New("usage accepts only --profile")
+	}
+
+	type usageResult struct {
+		usage api.ProviderUsage
+		err   error
+	}
+	chatGPTResults := make(chan usageResult, 1)
+	openCodeResults := make(chan usageResult, 1)
+	go func() {
+		usage, fetchErr := fetchChatGPTUsage(ctx, options)
+		chatGPTResults <- usageResult{usage: usage, err: fetchErr}
+	}()
+	go func() {
+		usage, fetchErr := fetchOpenCodeGoUsage(ctx)
+		openCodeResults <- usageResult{usage: usage, err: fetchErr}
+	}()
+
+	results := []struct {
+		name   string
+		result usageResult
+	}{
+		{name: "ChatGPT", result: <-chatGPTResults},
+		{name: "OpenCode Go", result: <-openCodeResults},
+	}
+	succeeded := 0
+	var failures []string
+	for index, provider := range results {
+		if index > 0 {
+			fmt.Fprintln(output)
+		}
+		fmt.Fprintln(output, provider.name)
+		if provider.result.err != nil {
+			fmt.Fprintf(output, "ERROR: %s\n", provider.result.err)
+			failures = append(failures, provider.name)
+			continue
+		}
+		printUsage(output, provider.result.usage)
+		succeeded++
+	}
+	if succeeded == 0 {
+		return fmt.Errorf("usage is unavailable for %s", strings.Join(failures, " and "))
 	}
 	return nil
 }
@@ -588,6 +656,7 @@ func printHelp(output io.Writer) {
 Usage:
   prism claude [claude arguments...]
   prism codex enable|disable|status
+  prism usage [--profile <name>]
   prism chatgpt usage [--profile <name>]
   prism opencode-go usage
   prism chatgpt auth login [--profile <name>]

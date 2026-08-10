@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +20,7 @@ func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := stdout.String()
-	for _, command := range []string{"prism claude", "prism codex", "chatgpt usage", "opencode-go usage", "auth login", "auth list", "auth remove"} {
+	for _, command := range []string{"prism claude", "prism codex", "prism usage", "chatgpt usage", "opencode-go usage", "auth login", "auth list", "auth remove"} {
 		if !strings.Contains(output, command) {
 			t.Fatalf("help did not contain %q", command)
 		}
@@ -31,6 +32,89 @@ func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 		if strings.Contains(output, internalDetail) {
 			t.Fatalf("help exposed internal detail %q", internalDetail)
 		}
+	}
+}
+
+func TestCombinedUsageShowsChatGPTAndOpenCodeGo(t *testing.T) {
+	originalChatGPT := fetchChatGPTUsage
+	originalOpenCode := fetchOpenCodeGoUsage
+	defer func() {
+		fetchChatGPTUsage = originalChatGPT
+		fetchOpenCodeGoUsage = originalOpenCode
+	}()
+	plan := "pro"
+	var chatGPTOptions commonOptions
+	fetchChatGPTUsage = func(_ context.Context, options commonOptions) (api.ProviderUsage, error) {
+		chatGPTOptions = options
+		return api.ProviderUsage{Provider: "chatgpt", Accounts: []api.UsageAccount{{
+			Name: "person@example.com", Plan: &plan,
+			Limits: []api.UsageLimit{{Name: "default", Window: "7d", UsedPercent: 10, RemainingPercent: 90}},
+		}}}, nil
+	}
+	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
+		return api.ProviderUsage{Provider: "opencode-go", Accounts: []api.UsageAccount{{
+			Name: "OpenCode workspace", Limits: []api.UsageLimit{{Name: "rolling", Window: "5h", UsedPercent: 2, RemainingPercent: 98}},
+		}}}, nil
+	}
+
+	var output bytes.Buffer
+	if err := Run(context.Background(), []string{"usage", "--profile", "work-admin"}, &output, &bytes.Buffer{}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if chatGPTOptions.profile != "work-admin" || !chatGPTOptions.profileSet {
+		t.Fatalf("ChatGPT options = %+v", chatGPTOptions)
+	}
+	text := output.String()
+	chatGPT := strings.Index(text, "ChatGPT\n")
+	openCode := strings.Index(text, "OpenCode Go\n")
+	if chatGPT < 0 || openCode < chatGPT || !strings.Contains(text, "person@example.com") || !strings.Contains(text, "OpenCode workspace") {
+		t.Fatalf("output = %q", text)
+	}
+}
+
+func TestCombinedUsageKeepsPartialResults(t *testing.T) {
+	originalChatGPT := fetchChatGPTUsage
+	originalOpenCode := fetchOpenCodeGoUsage
+	defer func() {
+		fetchChatGPTUsage = originalChatGPT
+		fetchOpenCodeGoUsage = originalOpenCode
+	}()
+	fetchChatGPTUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("ChatGPT login unavailable")
+	}
+	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
+		return api.ProviderUsage{Provider: "opencode-go", Accounts: []api.UsageAccount{{
+			Name: "OpenCode workspace", Limits: []api.UsageLimit{{Name: "weekly", Window: "7d"}},
+		}}}, nil
+	}
+
+	var output bytes.Buffer
+	if err := Run(context.Background(), []string{"usage"}, &output, &bytes.Buffer{}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "ERROR: ChatGPT login unavailable") || !strings.Contains(output.String(), "OpenCode workspace") {
+		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestCombinedUsageFailsOnlyWhenEveryProviderFails(t *testing.T) {
+	originalChatGPT := fetchChatGPTUsage
+	originalOpenCode := fetchOpenCodeGoUsage
+	defer func() {
+		fetchChatGPTUsage = originalChatGPT
+		fetchOpenCodeGoUsage = originalOpenCode
+	}()
+	fetchChatGPTUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("unavailable")
+	}
+	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("unavailable")
+	}
+
+	var output bytes.Buffer
+	err := Run(context.Background(), []string{"usage"}, &output, &bytes.Buffer{}, "test")
+	if err == nil || err.Error() != "usage is unavailable for ChatGPT and OpenCode Go" {
+		t.Fatalf("error = %v", err)
 	}
 }
 

@@ -20,6 +20,17 @@ curl -fsSL https://github.com/circlesac/prism-cli/releases/latest/download/insta
 crcl login
 ```
 
+## Usage
+
+Show ChatGPT and OpenCode Go usage together:
+
+```sh
+prism usage
+```
+
+Each provider is fetched independently, so an unavailable login does not hide
+usage from the other provider.
+
 ## ChatGPT
 
 ```sh
