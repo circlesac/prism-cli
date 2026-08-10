@@ -53,7 +53,7 @@ func TestCombinedUsageShowsChatGPTAndOpenCodeGo(t *testing.T) {
 	}
 	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
 		return api.ProviderUsage{Provider: "opencode-go", Accounts: []api.UsageAccount{{
-			Name: "OpenCode workspace", Limits: []api.UsageLimit{{Name: "rolling", Window: "5h", UsedPercent: 2, RemainingPercent: 98}},
+			Name: "-", Limits: []api.UsageLimit{{Name: "rolling", Window: "5h", UsedPercent: 2, RemainingPercent: 98}},
 		}}}, nil
 	}
 
@@ -65,9 +65,7 @@ func TestCombinedUsageShowsChatGPTAndOpenCodeGo(t *testing.T) {
 		t.Fatalf("ChatGPT options = %+v", chatGPTOptions)
 	}
 	text := output.String()
-	chatGPT := strings.Index(text, "ChatGPT\n")
-	openCode := strings.Index(text, "OpenCode Go\n")
-	if chatGPT < 0 || openCode < chatGPT || !strings.Contains(text, "person@example.com") || !strings.Contains(text, "OpenCode workspace") {
+	if strings.Count(text, "┌") != 1 || !strings.Contains(text, "│ PROVIDER │ ACCOUNT") || !strings.Contains(text, "ChatGPT") || !strings.Contains(text, "OpenCode") || !strings.Contains(text, "person@example.com") || strings.Contains(text, "OpenCode workspace") {
 		t.Fatalf("output = %q", text)
 	}
 }
@@ -84,7 +82,7 @@ func TestCombinedUsageKeepsPartialResults(t *testing.T) {
 	}
 	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
 		return api.ProviderUsage{Provider: "opencode-go", Accounts: []api.UsageAccount{{
-			Name: "OpenCode workspace", Limits: []api.UsageLimit{{Name: "weekly", Window: "7d"}},
+			Name: "-", Limits: []api.UsageLimit{{Name: "weekly", Window: "7d"}},
 		}}}, nil
 	}
 
@@ -92,7 +90,7 @@ func TestCombinedUsageKeepsPartialResults(t *testing.T) {
 	if err := Run(context.Background(), []string{"usage"}, &output, &bytes.Buffer{}, "test"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "ERROR: ChatGPT login unavailable") || !strings.Contains(output.String(), "OpenCode workspace") {
+	if !strings.Contains(output.String(), "ERROR: ChatGPT login unavailable") || !strings.Contains(output.String(), "OpenCode") {
 		t.Fatalf("output = %q", output.String())
 	}
 }
@@ -113,7 +111,7 @@ func TestCombinedUsageFailsOnlyWhenEveryProviderFails(t *testing.T) {
 
 	var output bytes.Buffer
 	err := Run(context.Background(), []string{"usage"}, &output, &bytes.Buffer{}, "test")
-	if err == nil || err.Error() != "usage is unavailable for ChatGPT and OpenCode Go" {
+	if err == nil || err.Error() != "usage is unavailable for ChatGPT and OpenCode" {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -126,7 +124,7 @@ func TestOpenCodeGoUsageUsesTheLocalBrowserWithoutCirclesCredentials(t *testing.
 	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
 		called = true
 		return api.ProviderUsage{Provider: "opencode-go", Accounts: []api.UsageAccount{{
-			ID: "wrk_EXAMPLE", Name: "OpenCode workspace", Plan: &plan,
+			ID: "wrk_EXAMPLE", Name: "-", Plan: &plan,
 			Limits: []api.UsageLimit{{Name: "rolling", Window: "5h", UsedPercent: 2, RemainingPercent: 98}},
 		}}}, nil
 	}
@@ -136,7 +134,7 @@ func TestOpenCodeGoUsageUsesTheLocalBrowserWithoutCirclesCredentials(t *testing.
 	if err := Run(context.Background(), []string{"opencode-go", "usage"}, &output, &bytes.Buffer{}, "test"); err != nil {
 		t.Fatal(err)
 	}
-	if !called || !strings.Contains(output.String(), "OpenCode workspace") || !strings.Contains(output.String(), "rolling") {
+	if !called || !strings.Contains(output.String(), "rolling") {
 		t.Fatalf("called = %v, output = %q", called, output.String())
 	}
 }

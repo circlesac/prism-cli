@@ -106,7 +106,7 @@ monthlyUsage:{status:"active",resetInSec:180,usagePercent:3}}
 	if zenRequests != 2 || len(usage.Accounts) != 1 || len(usage.Accounts[0].Limits) != 3 {
 		t.Fatalf("zen requests = %d, usage = %#v", zenRequests, usage)
 	}
-	if usage.Provider != "opencode-go" || usage.Accounts[0].ID != "wrk_EXAMPLE" || usage.Accounts[0].Name != "OpenCode workspace" {
+	if usage.Provider != "opencode-go" || usage.Accounts[0].ID != "wrk_EXAMPLE" || usage.Accounts[0].Name != "-" {
 		t.Fatalf("usage = %#v", usage)
 	}
 }

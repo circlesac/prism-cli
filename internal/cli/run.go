@@ -184,23 +184,24 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 		result usageResult
 	}{
 		{name: "ChatGPT", result: <-chatGPTResults},
-		{name: "OpenCode Go", result: <-openCodeResults},
+		{name: "OpenCode", result: <-openCodeResults},
 	}
 	succeeded := 0
 	var failures []string
-	for index, provider := range results {
-		if index > 0 {
-			fmt.Fprintln(output)
-		}
-		fmt.Fprintln(output, provider.name)
+	providers := make([]usageTableProvider, 0, len(results))
+	for _, provider := range results {
+		providers = append(providers, usageTableProvider{
+			name:  provider.name,
+			usage: provider.result.usage,
+			err:   provider.result.err,
+		})
 		if provider.result.err != nil {
-			fmt.Fprintf(output, "ERROR: %s\n", provider.result.err)
 			failures = append(failures, provider.name)
 			continue
 		}
-		printUsage(output, provider.result.usage)
 		succeeded++
 	}
+	printUsageTableAt(output, providers, time.Now(), true)
 	if succeeded == 0 {
 		return fmt.Errorf("usage is unavailable for %s", strings.Join(failures, " and "))
 	}
@@ -257,50 +258,84 @@ func printUsage(output io.Writer, usage api.ProviderUsage) {
 	printUsageAt(output, usage, time.Now())
 }
 
+type usageTableProvider struct {
+	name  string
+	usage api.ProviderUsage
+	err   error
+}
+
 func printUsageAt(output io.Writer, usage api.ProviderUsage, now time.Time) {
 	if len(usage.Accounts) == 0 {
 		fmt.Fprintf(output, "No %s credentials are registered.\n", usage.Provider)
 		return
 	}
-	rows := [][]string{{"NAME", "PLAN", "LIMIT", "WINDOW", "USED", "REMAINING", "RESET", "PACE"}}
+	printUsageTableAt(output, []usageTableProvider{{usage: usage}}, now, false)
+}
+
+func printUsageTableAt(output io.Writer, providers []usageTableProvider, now time.Time, showProvider bool) {
+	rows := [][]string{{"PROVIDER", "ACCOUNT", "PLAN", "LIMIT", "WINDOW", "USED", "REMAINING", "RESET", "PACE"}}
+	if !showProvider {
+		rows[0] = rows[0][1:]
+		rows[0][0] = "NAME"
+	}
 	accountSeparators := map[int]bool{}
-	for _, account := range usage.Accounts {
-		if len(rows) > 1 && (account.Error != nil || len(account.Limits) > 0) {
-			accountSeparators[len(rows)] = true
-		}
-		plan := "-"
-		if account.Plan != nil && *account.Plan != "" {
-			plan = *account.Plan
-		}
-		if account.Error != nil {
-			rows = append(rows, []string{account.Name, plan, "-", "-", "-", "-", "ERROR: " + account.Error.Message, "-"})
+	for _, provider := range providers {
+		providerName := provider.name
+		if provider.err != nil {
+			if len(rows) > 1 {
+				accountSeparators[len(rows)] = true
+			}
+			rows = appendUsageRow(rows, showProvider, providerName, "-", "-", "-", "-", "-", "-", "ERROR: "+provider.err.Error(), "-")
 			continue
 		}
-		for index, limit := range account.Limits {
-			name := account.Name
-			rowPlan := plan
-			if index > 0 {
-				name = ""
-				rowPlan = ""
+		if len(provider.usage.Accounts) == 0 {
+			if len(rows) > 1 {
+				accountSeparators[len(rows)] = true
 			}
-			reset := "-"
-			if limit.ResetAt != nil {
-				reset = formatUsageReset(*limit.ResetAt, now)
+			rows = appendUsageRow(rows, showProvider, providerName, "-", "-", "-", "-", "-", "-", "No accounts", "-")
+			continue
+		}
+		for _, account := range provider.usage.Accounts {
+			if len(rows) > 1 && (account.Error != nil || len(account.Limits) > 0) {
+				accountSeparators[len(rows)] = true
 			}
-			pace := usagePace(limit, now)
-			rows = append(rows, []string{
-				name,
-				rowPlan,
-				limit.Name,
-				limit.Window,
-				fmt.Sprintf("%g%%", limit.UsedPercent),
-				fmt.Sprintf("%g%%", limit.RemainingPercent),
-				reset,
-				pace,
-			})
+			plan := "-"
+			if account.Plan != nil && *account.Plan != "" {
+				plan = *account.Plan
+			}
+			if account.Error != nil {
+				rows = appendUsageRow(rows, showProvider, providerName, account.Name, plan, "-", "-", "-", "-", "ERROR: "+account.Error.Message, "-")
+				providerName = ""
+				continue
+			}
+			for index, limit := range account.Limits {
+				name := account.Name
+				rowPlan := plan
+				if index > 0 {
+					name = ""
+					rowPlan = ""
+				}
+				reset := "-"
+				if limit.ResetAt != nil {
+					reset = formatUsageReset(*limit.ResetAt, now)
+				}
+				rows = appendUsageRow(rows, showProvider, providerName, name, rowPlan, limit.Name, limit.Window, fmt.Sprintf("%g%%", limit.UsedPercent), fmt.Sprintf("%g%%", limit.RemainingPercent), reset, usagePace(limit, now))
+				providerName = ""
+			}
 		}
 	}
-	printTable(output, rows, map[int]bool{4: true, 5: true}, accountSeparators)
+	usedColumn := 4
+	if showProvider {
+		usedColumn++
+	}
+	printTable(output, rows, map[int]bool{usedColumn: true, usedColumn + 1: true}, accountSeparators)
+}
+
+func appendUsageRow(rows [][]string, showProvider bool, values ...string) [][]string {
+	if !showProvider {
+		values = values[1:]
+	}
+	return append(rows, values)
 }
 
 func usagePace(limit api.UsageLimit, now time.Time) string {
