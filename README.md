@@ -32,6 +32,19 @@ prism chatgpt auth remove <credential-id>
 Run `prism chatgpt auth login` again to add another ChatGPT account.
 Usage reset times are shown in the local timezone with the remaining time.
 
+## OpenCode Go
+
+Show usage from an OpenCode login already present in Chrome, Chromium, Comet,
+Arc, Edge, Brave, or Firefox on macOS:
+
+```sh
+prism opencode-go usage
+```
+
+Prism reads the browser session only for this request. It does not save or
+print browser cookies. The output includes rolling, weekly, and monthly reset
+times and whether the current usage pace is likely to exhaust each limit.
+
 ## Other providers
 
 ```sh

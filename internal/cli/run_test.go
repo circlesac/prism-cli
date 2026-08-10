@@ -19,7 +19,7 @@ func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := stdout.String()
-	for _, command := range []string{"prism claude", "prism codex", "chatgpt usage", "auth login", "auth list", "auth remove"} {
+	for _, command := range []string{"prism claude", "prism codex", "chatgpt usage", "opencode-go usage", "auth login", "auth list", "auth remove"} {
 		if !strings.Contains(output, command) {
 			t.Fatalf("help did not contain %q", command)
 		}
@@ -31,6 +31,29 @@ func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 		if strings.Contains(output, internalDetail) {
 			t.Fatalf("help exposed internal detail %q", internalDetail)
 		}
+	}
+}
+
+func TestOpenCodeGoUsageUsesTheLocalBrowserWithoutCirclesCredentials(t *testing.T) {
+	original := fetchOpenCodeGoUsage
+	defer func() { fetchOpenCodeGoUsage = original }()
+	called := false
+	plan := "Go"
+	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
+		called = true
+		return api.ProviderUsage{Provider: "opencode-go", Accounts: []api.UsageAccount{{
+			ID: "wrk_EXAMPLE", Name: "OpenCode workspace", Plan: &plan,
+			Limits: []api.UsageLimit{{Name: "rolling", Window: "5h", UsedPercent: 2, RemainingPercent: 98}},
+		}}}, nil
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CIRCLES_AUTH_TOKEN", "")
+	var output bytes.Buffer
+	if err := Run(context.Background(), []string{"opencode-go", "usage"}, &output, &bytes.Buffer{}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if !called || !strings.Contains(output.String(), "OpenCode workspace") || !strings.Contains(output.String(), "rolling") {
+		t.Fatalf("called = %v, output = %q", called, output.String())
 	}
 }
 
