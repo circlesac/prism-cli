@@ -20,8 +20,9 @@ import (
 const openCodeBaseURL = "https://opencode.ai"
 
 type browserCookie struct {
-	name  string
-	value string
+	name      string
+	value     string
+	expiresAt time.Time
 }
 
 type browserSession struct {
@@ -39,11 +40,27 @@ type sessionScan struct {
 }
 
 var scanBrowserSessions = browserSessions
+var fetchSessionUsage = func(ctx context.Context, now time.Time, sessions []browserSession) (api.ProviderUsage, error) {
+	return fetchFromSessions(ctx, &http.Client{Timeout: 30 * time.Second}, openCodeBaseURL, now, sessions)
+}
 
-// Fetch reads OpenCode's authenticated browser session without persisting it
-// and returns the Go plan usage shown by opencode.ai.
+var errOpenCodeSessionInvalid = errors.New("OpenCode browser login is not valid or no workspace is available")
+var errOpenCodeSessionRejected = errors.New("OpenCode rejected the browser login session")
+
+// Fetch reuses a validated cached session when possible and otherwise reads
+// OpenCode's authenticated browser session to return the Go plan usage.
 func Fetch(ctx context.Context) (api.ProviderUsage, error) {
 	now := time.Now()
+	if sessions, err := loadSessionCache(now); err == nil && len(sessions) > 0 {
+		usage, err := fetchSessionUsage(ctx, now, sessions)
+		if err == nil {
+			return usage, nil
+		}
+		if !errors.Is(err, errOpenCodeSessionInvalid) {
+			return api.ProviderUsage{}, err
+		}
+	}
+
 	scan := scanBrowserSessions(now)
 	if scan.unsupported {
 		return api.ProviderUsage{}, errors.New("OpenCode browser session reading is currently supported on macOS")
@@ -61,7 +78,11 @@ func Fetch(ctx context.Context) (api.ProviderUsage, error) {
 		}
 	}
 
-	return fetchFromSessions(ctx, &http.Client{Timeout: 30 * time.Second}, openCodeBaseURL, now, scan.sessions)
+	usage, err := fetchSessionUsage(ctx, now, scan.sessions)
+	if err == nil {
+		_ = saveSessionCache(scan.sessions)
+	}
+	return usage, err
 }
 
 func fetchFromSessions(
@@ -73,9 +94,13 @@ func fetchFromSessions(
 ) (api.ProviderUsage, error) {
 	workspaceSessions := map[string][]browserSession{}
 	requestSucceeded := false
+	sessionRejected := false
 	for _, session := range sessions {
 		body, err := fetchPage(ctx, client, baseURL+"/zen", session)
 		if err != nil {
+			if errors.Is(err, errOpenCodeSessionRejected) {
+				sessionRejected = true
+			}
 			continue
 		}
 		requestSucceeded = true
@@ -85,9 +110,12 @@ func fetchFromSessions(
 	}
 	if len(workspaceSessions) == 0 {
 		if !requestSucceeded {
+			if sessionRejected {
+				return api.ProviderUsage{}, errOpenCodeSessionInvalid
+			}
 			return api.ProviderUsage{}, errors.New("OpenCode could not be reached")
 		}
-		return api.ProviderUsage{}, errors.New("OpenCode browser login is not valid or no workspace is available")
+		return api.ProviderUsage{}, errOpenCodeSessionInvalid
 	}
 
 	workspaceIDs := make([]string, 0, len(workspaceSessions))
@@ -163,6 +191,9 @@ func fetchPage(ctx context.Context, client *http.Client, endpoint string, sessio
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, response.Body)
+		if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
+			return "", fmt.Errorf("%w: HTTP %d", errOpenCodeSessionRejected, response.StatusCode)
+		}
 		return "", fmt.Errorf("OpenCode returned HTTP %d", response.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
