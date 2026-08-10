@@ -17,8 +17,11 @@ import (
 	"github.com/circlesac/prism-cli/internal/chatgpt"
 	"github.com/circlesac/prism-cli/internal/copilot"
 	"github.com/circlesac/prism-cli/internal/gemini"
+	"github.com/circlesac/prism-cli/internal/opencodego"
 	"github.com/circlesac/prism-cli/internal/secret"
 )
+
+var fetchOpenCodeGoUsage = opencodego.Fetch
 
 type commonOptions struct {
 	profile           string
@@ -81,6 +84,14 @@ func Run(
 	if err := validateCommand(providerName, command, positionals, options); err != nil {
 		return err
 	}
+	if command == "usage" && providerName == "opencode-go" {
+		usage, err := fetchOpenCodeGoUsage(ctx)
+		if err != nil {
+			return err
+		}
+		printUsage(stdout, usage)
+		return nil
+	}
 
 	client, err := prismClient(ctx, options)
 	if err != nil {
@@ -131,7 +142,7 @@ func Run(
 func validateCommand(provider string, command string, positionals []string, options commonOptions) error {
 	switch command {
 	case "usage":
-		if provider != "chatgpt" {
+		if provider != "chatgpt" && provider != "opencode-go" {
 			return fmt.Errorf("%s usage is not supported", provider)
 		}
 		if len(positionals) != 0 {
@@ -571,6 +582,7 @@ Usage:
   prism claude [claude arguments...]
   prism codex enable|disable|status
   prism chatgpt usage [--profile <name>]
+  prism opencode-go usage
   prism chatgpt auth login [--profile <name>]
   prism copilot auth login [--profile <name>]
   prism gemini auth login [--profile <name>]
