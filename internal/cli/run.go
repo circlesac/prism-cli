@@ -195,7 +195,11 @@ func printUsageAt(output io.Writer, usage api.ProviderUsage, now time.Time) {
 		return
 	}
 	rows := [][]string{{"NAME", "PLAN", "LIMIT", "WINDOW", "USED", "REMAINING", "RESET", "PACE"}}
+	accountSeparators := map[int]bool{}
 	for _, account := range usage.Accounts {
+		if len(rows) > 1 && (account.Error != nil || len(account.Limits) > 0) {
+			accountSeparators[len(rows)] = true
+		}
 		plan := "-"
 		if account.Plan != nil && *account.Plan != "" {
 			plan = *account.Plan
@@ -228,7 +232,7 @@ func printUsageAt(output io.Writer, usage api.ProviderUsage, now time.Time) {
 			})
 		}
 	}
-	printTable(output, rows, map[int]bool{4: true, 5: true})
+	printTable(output, rows, map[int]bool{4: true, 5: true}, accountSeparators)
 }
 
 func usagePace(limit api.UsageLimit, now time.Time) string {
@@ -339,7 +343,7 @@ func formatUsageTimeRemaining(remaining time.Duration) string {
 	return "in " + value
 }
 
-func printTable(output io.Writer, rows [][]string, rightAligned map[int]bool) {
+func printTable(output io.Writer, rows [][]string, rightAligned map[int]bool, separatorsBefore map[int]bool) {
 	widths := make([]int, len(rows[0]))
 	for _, row := range rows {
 		for column, value := range row {
@@ -349,6 +353,9 @@ func printTable(output io.Writer, rows [][]string, rightAligned map[int]bool) {
 	}
 	printTableBorder(output, widths, "┌", "┬", "┐")
 	for index, row := range rows {
+		if separatorsBefore[index] {
+			printTableBorder(output, widths, "├", "┼", "┤")
+		}
 		fmt.Fprint(output, "│")
 		for column, value := range row {
 			padding := widths[column] - utf8.RuneCountInString(value)
