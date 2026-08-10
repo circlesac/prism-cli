@@ -340,7 +340,7 @@ func appendUsageRow(rows [][]string, showProvider bool, values ...string) [][]st
 
 func usagePace(limit api.UsageLimit, now time.Time) string {
 	if limit.LimitReached || limit.UsedPercent >= 100 {
-		return "LIMIT REACHED"
+		return "⛔ LIMIT REACHED"
 	}
 	if limit.WindowSeconds == nil || limit.ResetAt == nil || *limit.WindowSeconds <= 0 {
 		return "-"
@@ -358,33 +358,33 @@ func usagePace(limit api.UsageLimit, now time.Time) string {
 
 	elapsed := window - remaining
 	if elapsed < maxDuration(time.Minute, window/100) {
-		return "TOO EARLY"
+		return "⏳ TOO EARLY"
 	}
 
 	projected := limit.UsedPercent / elapsed.Seconds() * window.Seconds()
 	if limit.UsedPercent <= 0 {
-		return "OK · ~100% left at reset"
+		return "✅ OK · ~100% left at reset"
 	}
 	if projected >= 100 {
 		rate := limit.UsedPercent / elapsed.Seconds()
 		if math.Abs(projected-100) < 1e-9 {
-			return "RUNS OUT at reset"
+			return "🔥 RUNS OUT at reset"
 		}
 		runOut := time.Duration((100 - limit.UsedPercent) / rate * float64(time.Second))
 		if runOut >= remaining {
-			return "RUNS OUT at reset"
+			return "🔥 RUNS OUT at reset"
 		}
 		if runOut <= 0 {
-			return "RUNS OUT"
+			return "🔥 RUNS OUT"
 		}
-		return "RUNS OUT in " + strings.TrimPrefix(formatUsageTimeRemaining(runOut), "in ")
+		return "🔥 RUNS OUT in " + strings.TrimPrefix(formatUsageTimeRemaining(runOut), "in ")
 	}
 	if projected <= 90 {
 		remainingPercent := max(0, int(math.Round(100-projected)))
-		return fmt.Sprintf("OK · ~%d%% left at reset", remainingPercent)
+		return fmt.Sprintf("✅ OK · ~%d%% left at reset", remainingPercent)
 	}
 	spare := max(1, int(math.Round(100-projected)))
-	return fmt.Sprintf("CLOSE · ~%d%% spare at reset", spare)
+	return fmt.Sprintf("⚠️ CLOSE · ~%d%% spare at reset", spare)
 }
 
 func maxDuration(a, b time.Duration) time.Duration {
@@ -451,7 +451,7 @@ func printTable(output io.Writer, rows [][]string, rightAligned map[int]bool, se
 	for _, row := range rows {
 		for column, value := range row {
 			row[column] = strings.NewReplacer("\r", " ", "\n", " ", "\t", " ").Replace(value)
-			widths[column] = max(widths[column], utf8.RuneCountInString(row[column]))
+			widths[column] = max(widths[column], tableDisplayWidth(row[column]))
 		}
 	}
 	printTableBorder(output, widths, "┌", "┬", "┐")
@@ -461,7 +461,7 @@ func printTable(output io.Writer, rows [][]string, rightAligned map[int]bool, se
 		}
 		fmt.Fprint(output, "│")
 		for column, value := range row {
-			padding := widths[column] - utf8.RuneCountInString(value)
+			padding := widths[column] - tableDisplayWidth(value)
 			if rightAligned[column] && index > 0 {
 				fmt.Fprintf(output, " %s%s │", strings.Repeat(" ", padding), value)
 			} else {
@@ -474,6 +474,14 @@ func printTable(output io.Writer, rows [][]string, rightAligned map[int]bool, se
 		}
 	}
 	printTableBorder(output, widths, "└", "┴", "┘")
+}
+
+func tableDisplayWidth(value string) int {
+	width := utf8.RuneCountInString(value)
+	for _, emoji := range []string{"✅", "🔥", "⛔", "⏳"} {
+		width += strings.Count(value, emoji)
+	}
+	return width
 }
 
 func printTableBorder(output io.Writer, widths []int, left string, middle string, right string) {
