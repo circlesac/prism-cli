@@ -126,7 +126,7 @@ func chromiumSession(product chromiumProduct, profile string, database string, n
 
 	password := ""
 	passwordLoaded := false
-	cookies := map[string]string{}
+	cookies := map[string]browserCookie{}
 	for _, line := range strings.Split(strings.TrimSuffix(string(output), "\n"), "\n") {
 		if line == "" {
 			continue
@@ -136,7 +136,8 @@ func chromiumSession(product chromiumProduct, profile string, database string, n
 			scan.invalidCookies++
 			continue
 		}
-		if chromeCookieExpired(fields[3], now) {
+		expiresAt, persistent := chromeCookieExpiresAt(fields[3])
+		if persistent && !expiresAt.After(now) {
 			scan.expiredCookies++
 			continue
 		}
@@ -154,7 +155,7 @@ func chromiumSession(product chromiumProduct, profile string, database string, n
 			scan.invalidCookies++
 			continue
 		}
-		cookies[fields[0]] = value
+		cookies[fields[0]] = browserCookie{name: fields[0], value: value, expiresAt: expiresAt}
 	}
 
 	return browserSession{label: product.name + " " + profile, cookies: sortedCookies(cookies)}, scan
@@ -226,13 +227,17 @@ func decryptChromiumCookie(encoded string, password string) (string, error) {
 }
 
 func chromeCookieExpired(value string, now time.Time) bool {
+	expiresAt, persistent := chromeCookieExpiresAt(value)
+	return persistent && !expiresAt.After(now)
+}
+
+func chromeCookieExpiresAt(value string) (time.Time, bool) {
 	microseconds, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || microseconds == 0 {
-		return false
+		return time.Time{}, false
 	}
 	const windowsToUnixSeconds = 11_644_473_600
-	expires := time.Unix(microseconds/1_000_000-windowsToUnixSeconds, microseconds%1_000_000*1_000)
-	return !expires.After(now)
+	return time.Unix(microseconds/1_000_000-windowsToUnixSeconds, microseconds%1_000_000*1_000), true
 }
 
 func firefoxSessions(root string, now time.Time) sessionScan {
@@ -263,7 +268,7 @@ func firefoxSessions(root string, now time.Time) sessionScan {
 			result.unreadableStores++
 			continue
 		}
-		cookies := map[string]string{}
+		cookies := map[string]browserCookie{}
 		for _, line := range strings.Split(strings.TrimSuffix(string(output), "\n"), "\n") {
 			if line == "" {
 				continue
@@ -274,7 +279,11 @@ func firefoxSessions(root string, now time.Time) sessionScan {
 				continue
 			}
 			expires, parseErr := strconv.ParseInt(fields[2], 10, 64)
-			if parseErr == nil && expires > 0 && !time.Unix(expires, 0).After(now) {
+			expiresAt := time.Time{}
+			if parseErr == nil && expires > 0 {
+				expiresAt = time.Unix(expires, 0)
+			}
+			if !expiresAt.IsZero() && !expiresAt.After(now) {
 				result.expiredCookies++
 				continue
 			}
@@ -282,7 +291,7 @@ func firefoxSessions(root string, now time.Time) sessionScan {
 				result.invalidCookies++
 				continue
 			}
-			cookies[fields[0]] = fields[1]
+			cookies[fields[0]] = browserCookie{name: fields[0], value: fields[1], expiresAt: expiresAt}
 		}
 		if sessionCookies := sortedCookies(cookies); len(sessionCookies) > 0 {
 			result.sessions = append(result.sessions, browserSession{label: "Firefox " + profile.name, cookies: sessionCookies})
@@ -331,7 +340,7 @@ func firefoxProfilePaths(configuration string, root string) []firefoxProfile {
 	return result
 }
 
-func sortedCookies(values map[string]string) []browserCookie {
+func sortedCookies(values map[string]browserCookie) []browserCookie {
 	names := make([]string, 0, len(values))
 	for name := range values {
 		names = append(names, name)
@@ -339,7 +348,7 @@ func sortedCookies(values map[string]string) []browserCookie {
 	sort.Strings(names)
 	result := make([]browserCookie, 0, len(names))
 	for _, name := range names {
-		result = append(result, browserCookie{name: name, value: values[name]})
+		result = append(result, values[name])
 	}
 	return result
 }

@@ -2,6 +2,7 @@ package opencodego
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -111,7 +112,22 @@ monthlyUsage:{status:"active",resetInSec:180,usagePercent:3}}
 	}
 }
 
+func TestFetchFromSessionsClassifiesRejectedLogin(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(output http.ResponseWriter, _ *http.Request) {
+		http.Error(output, "unauthorized", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	_, err := fetchFromSessions(context.Background(), server.Client(), server.URL, time.Now(), []browserSession{{
+		label: "Chrome Default", cookies: []browserCookie{{name: "auth", value: "rejected-session"}},
+	}})
+	if !errors.Is(err, errOpenCodeSessionInvalid) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestFetchSeparatesSessionDiscoveryFailures(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	original := scanBrowserSessions
 	defer func() { scanBrowserSessions = original }()
 	for _, test := range []struct {
