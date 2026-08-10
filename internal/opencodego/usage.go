@@ -120,9 +120,9 @@ func fetchFromSessions(
 			break
 		}
 
-		name := "OpenCode workspace"
+		name := "-"
 		if len(workspaceIDs) > 1 {
-			name = fmt.Sprintf("OpenCode workspace %d", index+1)
+			name = fmt.Sprintf("%d", index+1)
 		}
 		plan := "Go"
 		account := api.UsageAccount{
