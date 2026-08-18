@@ -17,6 +17,7 @@ func TestClaudeHelpDoesNotResolveCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "prism claude") ||
+		!strings.Contains(stdout.String(), "prism claude login") ||
 		!strings.Contains(stdout.String(), "crcl use <profile>") ||
 		!strings.Contains(stdout.String(), "claude --help") ||
 		strings.Contains(stdout.String(), "prism claude [--profile") {

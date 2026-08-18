@@ -45,6 +45,7 @@ type UsageAccount struct {
 	Name       string       `json:"name"`
 	Plan       *string      `json:"plan"`
 	ObservedAt string       `json:"observed_at"`
+	Status     string       `json:"status"`
 	Limits     []UsageLimit `json:"limits"`
 	Error      *UsageError  `json:"error"`
 }
@@ -55,7 +56,7 @@ type ProviderUsage struct {
 }
 
 var providers = map[string]struct{}{
-	"chatgpt": {}, "copilot": {}, "gemini": {}, "gemini-ai": {},
+	"chatgpt": {}, "anthropic": {}, "copilot": {}, "gemini": {}, "gemini-ai": {},
 	"groq": {}, "mistral": {}, "deepseek": {}, "opencode-go": {},
 	"cloudflare": {}, "vercel": {}, "gemini-app": {},
 }

@@ -22,14 +22,33 @@ crcl login
 
 ## Usage
 
-Show ChatGPT and OpenCode Go usage together:
+Show ChatGPT, Anthropic, and OpenCode Go usage together:
 
 ```sh
 prism usage
 ```
 
 Each provider is fetched independently, so an unavailable login does not hide
-usage from the other provider.
+usage from the other providers.
+
+## Anthropic
+
+Register each Claude subscription account separately and show its current quota:
+
+```sh
+prism anthropic auth login
+prism anthropic auth list
+prism anthropic usage
+prism anthropic auth remove <credential-id>
+```
+
+`prism claude login` is a short alias for `prism anthropic auth login`. The
+browser handles account selection, SSO, and MFA. Prism does not import the
+credential used by an existing Claude Code login.
+
+This first release stores and refreshes Anthropic credentials for account and
+usage management. `prism claude` inference continues to use Prism's existing
+providers until native Anthropic routing is added separately.
 
 ## ChatGPT
 
