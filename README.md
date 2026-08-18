@@ -46,9 +46,14 @@ prism anthropic auth remove <credential-id>
 browser handles account selection, SSO, and MFA. Prism does not import the
 credential used by an existing Claude Code login.
 
-This first release stores and refreshes Anthropic credentials for account and
-usage management. `prism claude` inference continues to use Prism's existing
-providers until native Anthropic routing is added separately.
+This stores and refreshes Anthropic credentials for account and usage management,
+and `prism claude` forwards requests through a local bridge while keeping
+Claude Code’s existing OAuth/login mode.
+
+`prism anthropic auth remove` deletes the Prism grant and its routing/usage
+state. Anthropic does not document a revocation endpoint for this grant, so the
+command does not claim provider-side revocation; use Anthropic account security
+settings when provider-side invalidation is required.
 
 ## ChatGPT
 
@@ -149,7 +154,13 @@ prism claude --model gpt-5.6-sol --effort ultracode
 
 These examples use `gpt-5.6-sol`; replace it with another Prism-supported
 model when needed. `prism claude` launches the installed Claude Code CLI and
-passes its arguments through unchanged.
+passes its arguments through unchanged. Claude models use the registered
+Anthropic account pool automatically. To start a session on one account, pass
+its alias or redacted id before the Claude Code arguments:
+
+```sh
+prism claude --account work-admin --model claude-fable-5
+```
 
 Verify the setup:
 

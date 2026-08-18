@@ -508,3 +508,22 @@ func TestOAuthLoginRejectsCallerChosenAccountIdentity(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestAnthropicRemovalExplainsTheProviderRevocationGap(t *testing.T) {
+	var output bytes.Buffer
+	printRemoveConfirmation(&output, "anthropic", "01j00000000000000000000002")
+	text := output.String()
+	if !strings.Contains(text, "Removed anthropic credential 01j00000000000000000000002 from Prism") ||
+		!strings.Contains(text, "provider-side revocation was not called") ||
+		!strings.Contains(text, "Anthropic account security settings") {
+		t.Fatalf("output = %q", text)
+	}
+}
+
+func TestOtherProviderRemovalMessageIsUnchanged(t *testing.T) {
+	var output bytes.Buffer
+	printRemoveConfirmation(&output, "chatgpt", "01j00000000000000000000002")
+	if output.String() != "Removed chatgpt credential 01j00000000000000000000002.\n" {
+		t.Fatalf("output = %q", output.String())
+	}
+}

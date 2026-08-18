@@ -153,9 +153,17 @@ func Run(
 		if err := client.Remove(ctx, positionals[0]); err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "Removed %s credential %s.\n", providerName, positionals[0])
+		printRemoveConfirmation(stdout, providerName, positionals[0])
 	}
 	return nil
+}
+
+func printRemoveConfirmation(output io.Writer, provider string, credentialID string) {
+	if provider == "anthropic" {
+		fmt.Fprintf(output, "Removed anthropic credential %s from Prism. Anthropic provider-side revocation was not called; use Anthropic account security settings if needed.\n", credentialID)
+		return
+	}
+	fmt.Fprintf(output, "Removed %s credential %s.\n", provider, credentialID)
 }
 
 func runCombinedUsage(ctx context.Context, args []string, output io.Writer) error {
@@ -737,7 +745,7 @@ func printHelp(output io.Writer) {
 	fmt.Fprintln(output, `Prism provider credential manager and client configuration tool
 
 Usage:
-  prism claude [claude arguments...]
+  prism claude [--account <alias-or-id>] [claude arguments...]
   prism codex enable|disable|status
   prism usage [--profile <name>]
   prism chatgpt usage [--profile <name>]
