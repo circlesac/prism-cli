@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	credentials "github.com/circlesac/credentials/go"
+	"github.com/circlesac/prism-cli/internal/anthropic"
 	"github.com/circlesac/prism-cli/internal/api"
 	"github.com/circlesac/prism-cli/internal/chatgpt"
 	"github.com/circlesac/prism-cli/internal/copilot"
@@ -28,6 +29,13 @@ var fetchChatGPTUsage = func(ctx context.Context, options commonOptions) (api.Pr
 		return api.ProviderUsage{}, err
 	}
 	return client.Usage(ctx, "chatgpt")
+}
+var fetchAnthropicUsage = func(ctx context.Context, options commonOptions) (api.ProviderUsage, error) {
+	client, err := prismClient(ctx, options)
+	if err != nil {
+		return api.ProviderUsage{}, err
+	}
+	return client.Usage(ctx, "anthropic")
 }
 
 type commonOptions struct {
@@ -98,6 +106,8 @@ func Run(
 		var usage api.ProviderUsage
 		if providerName == "opencode-go" {
 			usage, err = fetchOpenCodeGoUsage(ctx)
+		} else if providerName == "anthropic" {
+			usage, err = fetchAnthropicUsage(ctx, options)
 		} else {
 			usage, err = fetchChatGPTUsage(ctx, options)
 		}
@@ -169,10 +179,15 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 		err   error
 	}
 	chatGPTResults := make(chan usageResult, 1)
+	anthropicResults := make(chan usageResult, 1)
 	openCodeResults := make(chan usageResult, 1)
 	go func() {
 		usage, fetchErr := fetchChatGPTUsage(ctx, options)
 		chatGPTResults <- usageResult{usage: usage, err: fetchErr}
+	}()
+	go func() {
+		usage, fetchErr := fetchAnthropicUsage(ctx, options)
+		anthropicResults <- usageResult{usage: usage, err: fetchErr}
 	}()
 	go func() {
 		usage, fetchErr := fetchOpenCodeGoUsage(ctx)
@@ -184,6 +199,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 		result usageResult
 	}{
 		{name: "ChatGPT", result: <-chatGPTResults},
+		{name: "Claude", result: <-anthropicResults},
 		{name: "OpenCode", result: <-openCodeResults},
 	}
 	succeeded := 0
@@ -203,7 +219,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 	}
 	printUsageTableAt(output, providers, time.Now(), true)
 	if succeeded == 0 {
-		return fmt.Errorf("usage is unavailable for %s", strings.Join(failures, " and "))
+		return fmt.Errorf("usage is unavailable for %s", joinNames(failures))
 	}
 	return nil
 }
@@ -211,7 +227,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 func validateCommand(provider string, command string, positionals []string, options commonOptions) error {
 	switch command {
 	case "usage":
-		if provider != "chatgpt" && provider != "opencode-go" {
+		if provider != "chatgpt" && provider != "anthropic" && provider != "opencode-go" {
 			return fmt.Errorf("%s usage is not supported", provider)
 		}
 		if len(positionals) != 0 {
@@ -221,7 +237,7 @@ func validateCommand(provider string, command string, positionals []string, opti
 			return errors.New("usage accepts only --profile")
 		}
 	case "login":
-		if provider != "chatgpt" && provider != "copilot" && provider != "gemini" {
+		if provider != "chatgpt" && provider != "anthropic" && provider != "copilot" && provider != "gemini" {
 			return fmt.Errorf("%s uses 'auth add', not 'auth login'", provider)
 		}
 		if len(positionals) != 0 {
@@ -336,6 +352,19 @@ func appendUsageRow(rows [][]string, showProvider bool, values ...string) [][]st
 		values = values[1:]
 	}
 	return append(rows, values)
+}
+
+func joinNames(values []string) string {
+	switch len(values) {
+	case 0:
+		return ""
+	case 1:
+		return values[0]
+	case 2:
+		return values[0] + " and " + values[1]
+	default:
+		return strings.Join(values[:len(values)-1], ", ") + ", and " + values[len(values)-1]
+	}
 }
 
 func usagePace(limit api.UsageLimit, now time.Time) string {
@@ -530,6 +559,17 @@ func loginProvider(ctx context.Context, provider string, client api.Client, outp
 			return err
 		}
 		fmt.Fprintf(output, "Saved Gemini credential %s (%s).\n", saved.Name, saved.ID)
+	case "anthropic":
+		fmt.Fprintln(output, "Opening a browser for Anthropic login...")
+		grant, err := (anthropic.OAuth{}).Login(ctx)
+		if err != nil {
+			return err
+		}
+		saved, err := client.Save(ctx, "anthropic", "", grant)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(output, "Saved Anthropic credential %s (%s).\n", saved.Name, saved.ID)
 	}
 	return nil
 }
@@ -703,6 +743,8 @@ Usage:
   prism chatgpt usage [--profile <name>]
   prism opencode-go usage
   prism chatgpt auth login [--profile <name>]
+  prism anthropic auth login [--profile <name>]
+  prism claude login [--profile <name>]
   prism copilot auth login [--profile <name>]
   prism gemini auth login [--profile <name>]
   prism <provider> auth add [--name <name>] [provider options]
@@ -719,7 +761,7 @@ Run 'crcl login' before using Prism.`)
 }
 
 func printProviderAuthHelp(output io.Writer, provider string) {
-	if provider == "chatgpt" || provider == "copilot" || provider == "gemini" {
+	if provider == "chatgpt" || provider == "anthropic" || provider == "copilot" || provider == "gemini" {
 		fmt.Fprintf(output, `Usage:
   prism %s auth login [--profile <name>]
   prism %s auth list [--profile <name>]

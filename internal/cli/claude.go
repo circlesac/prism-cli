@@ -30,6 +30,20 @@ func runClaudeCommand(ctx context.Context, args []string, stdout io.Writer, stde
 		printClaudeHelp(stdout)
 		return nil
 	}
+	if len(args) > 0 && args[0] == "login" {
+		options, positionals, err := parseCommonOptions(args[1:])
+		if err != nil {
+			return err
+		}
+		if len(positionals) != 0 || options.name != "" || options.providerAccountID != "" || options.ownerID != "" {
+			return errors.New("usage: prism claude login [--profile <name>]")
+		}
+		client, err := prismClient(ctx, options)
+		if err != nil {
+			return err
+		}
+		return loginProvider(ctx, "anthropic", client, stdout)
+	}
 	client, err := prismClient(ctx, commonOptions{})
 	if err != nil {
 		return err
@@ -160,6 +174,7 @@ func claudeEnvironment(environment []string, baseURL string, credential string) 
 
 func printClaudeHelp(output io.Writer) {
 	_, _ = fmt.Fprintln(output, `Usage:
+  prism claude login [--profile <name>]
   prism claude [claude arguments...]
 
 Pass --model with any model supported by Prism.
