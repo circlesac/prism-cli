@@ -38,10 +38,12 @@ func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 func TestCombinedUsageShowsChatGPTAnthropicAndOpenCodeGo(t *testing.T) {
 	originalChatGPT := fetchChatGPTUsage
 	originalAnthropic := fetchAnthropicUsage
+	originalCopilot := fetchCopilotUsage
 	originalOpenCode := fetchOpenCodeGoUsage
 	defer func() {
 		fetchChatGPTUsage = originalChatGPT
 		fetchAnthropicUsage = originalAnthropic
+		fetchCopilotUsage = originalCopilot
 		fetchOpenCodeGoUsage = originalOpenCode
 	}()
 	plan := "pro"
@@ -63,6 +65,16 @@ func TestCombinedUsageShowsChatGPTAnthropicAndOpenCodeGo(t *testing.T) {
 			Limits: []api.UsageLimit{{Name: "default", Window: "5h", UsedPercent: 20, RemainingPercent: 80}},
 		}}}, nil
 	}
+	copilotPlan := "individual"
+	fetchCopilotUsage = func(_ context.Context, options commonOptions) (api.ProviderUsage, error) {
+		if options.profile != "work-admin" || !options.profileSet {
+			t.Fatalf("Copilot options = %+v", options)
+		}
+		return api.ProviderUsage{Provider: "copilot", Accounts: []api.UsageAccount{{
+			Name: "example-user", Plan: &copilotPlan,
+			Limits: []api.UsageLimit{{Name: "premium requests", Window: "monthly", UsedPercent: 45.3, RemainingPercent: 54.7}},
+		}}}, nil
+	}
 	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
 		return api.ProviderUsage{Provider: "opencode-go", Accounts: []api.UsageAccount{{
 			Name: "-", Limits: []api.UsageLimit{{Name: "rolling", Window: "5h", UsedPercent: 2, RemainingPercent: 98}},
@@ -77,7 +89,7 @@ func TestCombinedUsageShowsChatGPTAnthropicAndOpenCodeGo(t *testing.T) {
 		t.Fatalf("ChatGPT options = %+v", chatGPTOptions)
 	}
 	text := output.String()
-	if strings.Count(text, "┌") != 1 || !strings.Contains(text, "│ PROVIDER │ ACCOUNT") || !strings.Contains(text, "ChatGPT") || !strings.Contains(text, "Claude") || !strings.Contains(text, "OpenCode") || !strings.Contains(text, "Max 20x") || !strings.Contains(text, "person@example.com") || strings.Contains(text, "OpenCode workspace") {
+	if strings.Count(text, "┌") != 1 || !strings.Contains(text, "│ PROVIDER │ ACCOUNT") || !strings.Contains(text, "ChatGPT") || !strings.Contains(text, "Claude") || !strings.Contains(text, "Copilot") || !strings.Contains(text, "OpenCode") || !strings.Contains(text, "Max 20x") || !strings.Contains(text, "person@example.com") || !strings.Contains(text, "premium requests") || strings.Contains(text, "OpenCode workspace") {
 		t.Fatalf("output = %q", text)
 	}
 }
@@ -85,10 +97,12 @@ func TestCombinedUsageShowsChatGPTAnthropicAndOpenCodeGo(t *testing.T) {
 func TestCombinedUsageKeepsPartialResults(t *testing.T) {
 	originalChatGPT := fetchChatGPTUsage
 	originalAnthropic := fetchAnthropicUsage
+	originalCopilot := fetchCopilotUsage
 	originalOpenCode := fetchOpenCodeGoUsage
 	defer func() {
 		fetchChatGPTUsage = originalChatGPT
 		fetchAnthropicUsage = originalAnthropic
+		fetchCopilotUsage = originalCopilot
 		fetchOpenCodeGoUsage = originalOpenCode
 	}()
 	fetchChatGPTUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
@@ -96,6 +110,9 @@ func TestCombinedUsageKeepsPartialResults(t *testing.T) {
 	}
 	fetchAnthropicUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
 		return api.ProviderUsage{}, errors.New("Anthropic login unavailable")
+	}
+	fetchCopilotUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("Copilot login unavailable")
 	}
 	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
 		return api.ProviderUsage{Provider: "opencode-go", Accounts: []api.UsageAccount{{
@@ -115,10 +132,12 @@ func TestCombinedUsageKeepsPartialResults(t *testing.T) {
 func TestCombinedUsageFailsOnlyWhenEveryProviderFails(t *testing.T) {
 	originalChatGPT := fetchChatGPTUsage
 	originalAnthropic := fetchAnthropicUsage
+	originalCopilot := fetchCopilotUsage
 	originalOpenCode := fetchOpenCodeGoUsage
 	defer func() {
 		fetchChatGPTUsage = originalChatGPT
 		fetchAnthropicUsage = originalAnthropic
+		fetchCopilotUsage = originalCopilot
 		fetchOpenCodeGoUsage = originalOpenCode
 	}()
 	fetchChatGPTUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
@@ -127,13 +146,16 @@ func TestCombinedUsageFailsOnlyWhenEveryProviderFails(t *testing.T) {
 	fetchAnthropicUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
 		return api.ProviderUsage{}, errors.New("unavailable")
 	}
+	fetchCopilotUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("unavailable")
+	}
 	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
 		return api.ProviderUsage{}, errors.New("unavailable")
 	}
 
 	var output bytes.Buffer
 	err := Run(context.Background(), []string{"usage"}, &output, &bytes.Buffer{}, "test")
-	if err == nil || err.Error() != "usage is unavailable for ChatGPT, Claude, and OpenCode" {
+	if err == nil || err.Error() != "usage is unavailable for ChatGPT, Claude, Copilot, and OpenCode" {
 		t.Fatalf("error = %v", err)
 	}
 }

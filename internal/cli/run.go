@@ -37,6 +37,13 @@ var fetchAnthropicUsage = func(ctx context.Context, options commonOptions) (api.
 	}
 	return client.Usage(ctx, "anthropic")
 }
+var fetchCopilotUsage = func(ctx context.Context, options commonOptions) (api.ProviderUsage, error) {
+	client, err := prismClient(ctx, options)
+	if err != nil {
+		return api.ProviderUsage{}, err
+	}
+	return client.Usage(ctx, "copilot")
+}
 
 type commonOptions struct {
 	profile           string
@@ -108,6 +115,8 @@ func Run(
 			usage, err = fetchOpenCodeGoUsage(ctx)
 		} else if providerName == "anthropic" {
 			usage, err = fetchAnthropicUsage(ctx, options)
+		} else if providerName == "copilot" {
+			usage, err = fetchCopilotUsage(ctx, options)
 		} else {
 			usage, err = fetchChatGPTUsage(ctx, options)
 		}
@@ -188,6 +197,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 	}
 	chatGPTResults := make(chan usageResult, 1)
 	anthropicResults := make(chan usageResult, 1)
+	copilotResults := make(chan usageResult, 1)
 	openCodeResults := make(chan usageResult, 1)
 	go func() {
 		usage, fetchErr := fetchChatGPTUsage(ctx, options)
@@ -196,6 +206,10 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 	go func() {
 		usage, fetchErr := fetchAnthropicUsage(ctx, options)
 		anthropicResults <- usageResult{usage: usage, err: fetchErr}
+	}()
+	go func() {
+		usage, fetchErr := fetchCopilotUsage(ctx, options)
+		copilotResults <- usageResult{usage: usage, err: fetchErr}
 	}()
 	go func() {
 		usage, fetchErr := fetchOpenCodeGoUsage(ctx)
@@ -208,6 +222,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 	}{
 		{name: "ChatGPT", result: <-chatGPTResults},
 		{name: "Claude", result: <-anthropicResults},
+		{name: "Copilot", result: <-copilotResults},
 		{name: "OpenCode", result: <-openCodeResults},
 	}
 	succeeded := 0
@@ -235,7 +250,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 func validateCommand(provider string, command string, positionals []string, options commonOptions) error {
 	switch command {
 	case "usage":
-		if provider != "chatgpt" && provider != "anthropic" && provider != "opencode-go" {
+		if provider != "chatgpt" && provider != "anthropic" && provider != "copilot" && provider != "opencode-go" {
 			return fmt.Errorf("%s usage is not supported", provider)
 		}
 		if len(positionals) != 0 {
@@ -749,6 +764,7 @@ Usage:
   prism codex enable|disable|status
   prism usage [--profile <name>]
   prism chatgpt usage [--profile <name>]
+  prism copilot usage [--profile <name>]
   prism opencode-go usage
   prism chatgpt auth login [--profile <name>]
   prism anthropic auth login [--profile <name>]
