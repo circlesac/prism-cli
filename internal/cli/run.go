@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -358,7 +359,7 @@ func printUsageTableAt(output io.Writer, providers []usageTableProvider, now tim
 				if limit.ResetAt != nil {
 					reset = formatUsageReset(*limit.ResetAt, now)
 				}
-				rows = appendUsageRow(rows, showProvider, providerName, name, rowPlan, limit.Name, limit.Window, fmt.Sprintf("%g%%", limit.UsedPercent), fmt.Sprintf("%g%%", limit.RemainingPercent), reset, usagePace(limit, now))
+				rows = appendUsageRow(rows, showProvider, providerName, name, rowPlan, limit.Name, limit.Window, formatUsagePercent(limit.UsedPercent), formatUsagePercent(limit.RemainingPercent), reset, usagePace(limit, account.Status, now))
 				providerName = ""
 			}
 		}
@@ -390,7 +391,14 @@ func joinNames(values []string) string {
 	}
 }
 
-func usagePace(limit api.UsageLimit, now time.Time) string {
+func formatUsagePercent(value float64) string {
+	return strings.TrimSuffix(strconv.FormatFloat(value, 'f', 1, 64), ".0") + "%"
+}
+
+func usagePace(limit api.UsageLimit, status string, now time.Time) string {
+	if status == "stale" {
+		return "⚠️ STALE"
+	}
 	if limit.LimitReached || limit.UsedPercent >= 100 {
 		return "⛔ LIMIT REACHED"
 	}

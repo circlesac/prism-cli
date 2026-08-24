@@ -236,9 +236,10 @@ func TestUsagePaceProjectsQuotaAtReset(t *testing.T) {
 	}
 
 	tests := []struct {
-		name  string
-		limit api.UsageLimit
-		want  string
+		name   string
+		limit  api.UsageLimit
+		status string
+		want   string
 	}{
 		{
 			name:  "healthy",
@@ -280,14 +281,32 @@ func TestUsagePaceProjectsQuotaAtReset(t *testing.T) {
 			limit: api.UsageLimit{UsedPercent: 0, ResetAt: resetAt(0.5), WindowSeconds: window()},
 			want:  "✅ OK · ~100% left at reset",
 		},
+		{
+			name:   "stale",
+			limit:  api.UsageLimit{UsedPercent: 100, LimitReached: true, ResetAt: resetAt(1.1), WindowSeconds: window()},
+			status: "stale",
+			want:   "⚠️ STALE",
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := usagePace(test.limit, now); got != test.want {
+			if got := usagePace(test.limit, test.status, now); got != test.want {
 				t.Fatalf("usagePace() = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestFormatUsagePercentRoundsDisplayNoise(t *testing.T) {
+	for value, want := range map[float64]string{
+		14.000000000000002: "14%",
+		45.3:               "45.3%",
+		54.7:               "54.7%",
+	} {
+		if got := formatUsagePercent(value); got != want {
+			t.Fatalf("formatUsagePercent(%v) = %q, want %q", value, got, want)
+		}
 	}
 }
 
