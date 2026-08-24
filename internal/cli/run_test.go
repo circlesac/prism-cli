@@ -37,6 +37,7 @@ func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 }
 
 func TestCombinedUsageShowsEveryProvider(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	originalChatGPT := fetchChatGPTUsage
 	originalAnthropic := fetchAnthropicUsage
 	originalCopilot := fetchCopilotUsage
@@ -103,6 +104,7 @@ func TestCombinedUsageShowsEveryProvider(t *testing.T) {
 }
 
 func TestCombinedUsageKeepsPartialResults(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	originalChatGPT := fetchChatGPTUsage
 	originalAnthropic := fetchAnthropicUsage
 	originalCopilot := fetchCopilotUsage
@@ -143,6 +145,7 @@ func TestCombinedUsageKeepsPartialResults(t *testing.T) {
 }
 
 func TestCombinedUsageFailsOnlyWhenEveryProviderFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	originalChatGPT := fetchChatGPTUsage
 	originalAnthropic := fetchAnthropicUsage
 	originalCopilot := fetchCopilotUsage
