@@ -91,7 +91,7 @@ func TestRunGeminiUsesOfficialCLIWithGatewayEnvironment(t *testing.T) {
 	defer func() { findGeminiCLIExecutable = original }()
 	directory := t.TempDir()
 	executable := filepath.Join(directory, "gemini")
-	if err := os.WriteFile(executable, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\nprintf 'base=%s\\nheaders=%s\\nsettings=%s\\n' \"$GOOGLE_GEMINI_BASE_URL\" \"$GEMINI_CLI_CUSTOM_HEADERS\" \"$GEMINI_CLI_SYSTEM_SETTINGS_PATH\"\n"), 0o755); err != nil {
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\nprintf 'base=%s\\nheaders=%s\\nsettings=%s\\ntrust=%s\\n' \"$GOOGLE_GEMINI_BASE_URL\" \"$GEMINI_CLI_CUSTOM_HEADERS\" \"$GEMINI_CLI_SYSTEM_SETTINGS_PATH\" \"$GEMINI_CLI_TRUST_WORKSPACE\"\ncat \"$GEMINI_CLI_SYSTEM_SETTINGS_PATH\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	findGeminiCLIExecutable = func() (geminiCLIExecutable, error) { return geminiCLIExecutable{path: executable}, nil }
@@ -101,7 +101,7 @@ func TestRunGeminiUsesOfficialCLIWithGatewayEnvironment(t *testing.T) {
 	if err := runGemini(context.Background(), upstream.URL, "circles-secret", "person@example.com", withDefaultGeminiModel([]string{"-p", "hello"}), strings.NewReader(""), &output, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"--model\ngemini-3.7-flash\n-p\nhello", "base=http://127.0.0.1:", "headers=X-Prism-Gemini-Bridge:", "settings=/"} {
+	for _, value := range []string{"--model\ngemini-3.7-flash\n-p\nhello", "base=http://127.0.0.1:", "headers=X-Prism-Gemini-Bridge:", "settings=/", "trust=true", `"selectedType":"gateway"`, `"useExternal":true`} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("output omitted %q: %s", value, output.String())
 		}
