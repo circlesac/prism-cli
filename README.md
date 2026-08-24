@@ -22,7 +22,7 @@ crcl login
 
 ## Usage
 
-Show ChatGPT, Anthropic, and OpenCode Go usage together:
+Show ChatGPT, Anthropic, Copilot, OpenCode Go, and Cursor usage together:
 
 ```sh
 prism usage
@@ -30,6 +30,40 @@ prism usage
 
 Each provider is fetched independently, so an unavailable login does not hide
 usage from the other providers.
+
+## Cursor
+
+Install the official Cursor Agent without replacing an existing
+`~/.local/bin/agent`, then sign in with Cursor's supported browser flow:
+
+```sh
+prism cursor install
+prism cursor login
+prism cursor status
+prism cursor models
+```
+
+Run Cursor Agent through Prism while passing its arguments through unchanged:
+
+```sh
+prism cursor --mode ask -p 'Reply with exactly CURSOR_OK.'
+```
+
+Prism disables Cursor Agent's self-updater on every launch. Use
+`prism cursor update` (or `prism cursor upgrade`) to install the latest official
+package while preserving the separate `agent` command.
+
+Show the monthly Cursor Models and Other Models pools separately:
+
+```sh
+prism cursor usage
+```
+
+Cursor login remains in Cursor Agent's official credential store. Prism reads
+the access token only for the usage request and does not save or print it.
+Because Cursor does not publish a standalone usage CLI contract, usage is a
+read-only best-effort integration and reports an explicit error when the login
+or quota response is unavailable.
 
 ## Anthropic
 
