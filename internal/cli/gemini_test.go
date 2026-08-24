@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/circlesac/prism-cli/internal/api"
 )
 
 func TestGeminiDefaultsTo37FlashAndPreservesExplicitModel(t *testing.T) {
@@ -30,10 +32,25 @@ func TestGeminiHelpDocumentsOfficialCLIAccountsAndModels(t *testing.T) {
 	if err := runGeminiCommand(context.Background(), []string{"--help"}, &output, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"official Gemini CLI", "--account", "balanced rotation", "gemini-3.7-flash", "gemini-3.1-pro-preview"} {
+	for _, value := range []string{"official Gemini CLI", "--account", "balanced rotation", "AI Studio", "gemini-3.7-flash", "gemini-3.1-pro-preview"} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("help omitted %q: %s", value, output.String())
 		}
+	}
+}
+
+func TestGeminiAccountSelectionPrefersAIStudioAndSupportsExplicitCodeAssist(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	aiStudio := []api.Credential{{ID: "ai-1", Name: "personal"}, {ID: "ai-2", Name: "work-admin"}}
+	codeAssist := []api.Credential{{ID: "oauth-1", Name: "enterprise"}}
+
+	provider, account, err := selectGeminiAccount("", aiStudio, codeAssist)
+	if err != nil || provider != "gemini-ai" || account != "ai-1" {
+		t.Fatalf("default = %q/%q, error = %v", provider, account, err)
+	}
+	provider, account, err = selectGeminiAccount("enterprise", aiStudio, codeAssist)
+	if err != nil || provider != "gemini" || account != "oauth-1" {
+		t.Fatalf("explicit = %q/%q, error = %v", provider, account, err)
 	}
 }
 
@@ -50,6 +67,9 @@ func TestGeminiBridgeAuthenticatesLocallyAndSelectsAccount(t *testing.T) {
 		if request.Header.Get("X-Prism-Gemini-Account") != "b64:cGVyc29uQGV4YW1wbGUuY29t" {
 			t.Errorf("account = %q", request.Header.Get("X-Prism-Gemini-Account"))
 		}
+		if request.Header.Get("X-Prism-Gemini-Provider") != "gemini-ai" {
+			t.Errorf("provider = %q", request.Header.Get("X-Prism-Gemini-Provider"))
+		}
 		if request.Header.Get("X-Goog-Api-Key") != "" || request.Header.Get("X-Prism-Gemini-Bridge") != "" {
 			t.Errorf("private headers leaked")
 		}
@@ -58,7 +78,7 @@ func TestGeminiBridgeAuthenticatesLocallyAndSelectsAccount(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	bridge, err := startGeminiBridge(upstream.URL, "circles-secret", "person@example.com", io.Discard)
+	bridge, err := startGeminiBridge(upstream.URL, "circles-secret", "gemini-ai", "person@example.com", io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +118,7 @@ func TestRunGeminiUsesOfficialCLIWithGatewayEnvironment(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer upstream.Close()
 	var output bytes.Buffer
-	if err := runGemini(context.Background(), upstream.URL, "circles-secret", "person@example.com", withDefaultGeminiModel([]string{"-p", "hello"}), strings.NewReader(""), &output, io.Discard); err != nil {
+	if err := runGemini(context.Background(), upstream.URL, "circles-secret", "gemini-ai", "person@example.com", withDefaultGeminiModel([]string{"-p", "hello"}), strings.NewReader(""), &output, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	for _, value := range []string{"--model\ngemini-3.7-flash\n-p\nhello", "base=http://127.0.0.1:", "headers=X-Prism-Gemini-Bridge:", "settings=/", "trust=true", `"selectedType":"gateway"`, `"useExternal":true`} {

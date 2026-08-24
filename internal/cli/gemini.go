@@ -19,6 +19,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/circlesac/prism-cli/internal/api"
 )
 
 const defaultGeminiModel = "gemini-3.7-flash"
@@ -62,26 +64,58 @@ func runGeminiCommand(ctx context.Context, args []string, stdout io.Writer, stde
 	if err != nil {
 		return err
 	}
-	if account == "" {
-		accounts, listErr := client.List(ctx, "gemini")
-		if listErr != nil {
-			return listErr
-		}
-		if len(accounts) == 0 {
-			return errors.New("no Gemini accounts are registered; run 'prism gemini auth login'")
-		}
-		account, err = rotateProviderAccount("gemini", accounts)
-		if err != nil {
-			return err
-		}
+	aiStudioAccounts, err := client.List(ctx, "gemini-ai")
+	if err != nil {
+		return err
 	}
-	return runGemini(ctx, client.BaseURL, client.Token, account, withDefaultGeminiModel(passthrough), os.Stdin, stdout, stderr)
+	codeAssistAccounts, err := client.List(ctx, "gemini")
+	if err != nil {
+		return err
+	}
+	provider, selectedAccount, err := selectGeminiAccount(account, aiStudioAccounts, codeAssistAccounts)
+	if err != nil {
+		return err
+	}
+	return runGemini(ctx, client.BaseURL, client.Token, provider, selectedAccount, withDefaultGeminiModel(passthrough), os.Stdin, stdout, stderr)
+}
+
+func selectGeminiAccount(selector string, aiStudioAccounts []api.Credential, codeAssistAccounts []api.Credential) (string, string, error) {
+	if selector != "" {
+		matches := make([]struct{ provider, id string }, 0, 2)
+		for _, group := range []struct {
+			provider string
+			accounts []api.Credential
+		}{{"gemini-ai", aiStudioAccounts}, {"gemini", codeAssistAccounts}} {
+			for _, account := range group.accounts {
+				if account.ID == selector || account.Name == selector {
+					matches = append(matches, struct{ provider, id string }{group.provider, account.ID})
+				}
+			}
+		}
+		if len(matches) == 0 {
+			return "", "", fmt.Errorf("Gemini account %q is not registered", selector)
+		}
+		if len(matches) > 1 {
+			return "", "", fmt.Errorf("Gemini account %q is ambiguous; use its credential ID", selector)
+		}
+		return matches[0].provider, matches[0].id, nil
+	}
+	provider, accounts := "gemini-ai", aiStudioAccounts
+	if len(accounts) == 0 {
+		provider, accounts = "gemini", codeAssistAccounts
+	}
+	if len(accounts) == 0 {
+		return "", "", errors.New("no Gemini accounts are registered; run 'prism gemini-ai auth add'")
+	}
+	account, err := rotateProviderAccount(provider, accounts)
+	return provider, account, err
 }
 
 func runGemini(
 	ctx context.Context,
 	prismURL string,
 	prismCredential string,
+	provider string,
 	account string,
 	args []string,
 	stdin io.Reader,
@@ -92,7 +126,7 @@ func runGemini(
 	if err != nil {
 		return err
 	}
-	bridge, err := startGeminiBridge(prismURL, prismCredential, account, stderr)
+	bridge, err := startGeminiBridge(prismURL, prismCredential, provider, account, stderr)
 	if err != nil {
 		return err
 	}
@@ -157,7 +191,7 @@ func withDefaultGeminiModel(args []string) []string {
 	return append([]string{"--model", defaultGeminiModel}, args...)
 }
 
-func startGeminiBridge(prismURL string, prismCredential string, account string, stderr io.Writer) (*geminiBridge, error) {
+func startGeminiBridge(prismURL string, prismCredential string, provider string, account string, stderr io.Writer) (*geminiBridge, error) {
 	target, err := url.Parse(prismURL)
 	if err != nil || (target.Scheme != "https" && target.Scheme != "http") || target.Host == "" {
 		return nil, errors.New("Prism URL is invalid")
@@ -167,6 +201,9 @@ func startGeminiBridge(prismURL string, prismCredential string, account string, 
 	}
 	if strings.TrimSpace(account) == "" || strings.ContainsAny(account, "\r\n") {
 		return nil, errors.New("Gemini account selector is invalid")
+	}
+	if provider != "gemini-ai" && provider != "gemini" {
+		return nil, errors.New("Gemini account provider is invalid")
 	}
 	credentialBytes := make([]byte, 32)
 	if _, err := rand.Read(credentialBytes); err != nil {
@@ -183,8 +220,10 @@ func startGeminiBridge(prismURL string, prismCredential string, account string, 
 		request.Header.Del("Authorization")
 		request.Header.Del("X-Goog-Api-Key")
 		request.Header.Del(localHeaderName)
+		request.Header.Del("X-Prism-Gemini-Provider")
 		request.Header.Set("Authorization", "Bearer "+prismCredential)
 		request.Header.Set("X-Prism-Gemini-Account", "b64:"+base64.RawURLEncoding.EncodeToString([]byte(account)))
+		request.Header.Set("X-Prism-Gemini-Provider", provider)
 	}
 	proxy.ErrorLog = log.New(stderr, "prism: ", 0)
 	proxy.ErrorHandler = func(response http.ResponseWriter, _ *http.Request, _ error) {
@@ -258,7 +297,8 @@ func printGeminiHelp(output io.Writer) {
   prism gemini [--account <alias-or-id>] [Gemini CLI arguments...]
 
 Runs the official Gemini CLI through Prism's Vault-backed Google accounts.
-Without --account, registered accounts are selected in balanced rotation.
+AI Studio accounts are preferred and selected in balanced rotation. A valid
+Code Assist account can still be selected explicitly with --account.
 The default model is gemini-3.7-flash; use --model gemini-3.1-pro-preview for
 hard software-engineering and multi-step tool-use work.
 Run 'gemini --help' for Gemini CLI options.`)

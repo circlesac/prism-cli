@@ -79,19 +79,23 @@ or quota response is unavailable.
 
 ## Gemini CLI
 
-Register each Google account, then run the official Gemini CLI through Prism:
+Register each Google AI Studio account, then run the official Gemini CLI through Prism:
 
 ```sh
-prism gemini auth login
-prism gemini auth list
+prism gemini-ai auth add --name personal
+prism gemini-ai auth list
 prism gemini -p 'Reply with exactly GEMINI_OK.'
 ```
 
-Prism rotates across registered Gemini accounts unless `--account` selects one:
+Prism rotates across registered AI Studio accounts unless `--account` selects one:
 
 ```sh
 prism gemini --account work-admin -p 'Reply with exactly GEMINI_OK.'
 ```
+
+Code Assist OAuth accounts remain available through `prism gemini auth login`,
+but require a current Code Assist license and are selected only when no AI
+Studio account is registered or when `--account` names one explicitly.
 
 The default model is `gemini-3.7-flash`. For harder software-engineering or
 multi-step tool-use tasks, select `gemini-3.1-pro-preview` explicitly:
