@@ -18,6 +18,7 @@ import (
 	"github.com/circlesac/prism-cli/internal/api"
 	"github.com/circlesac/prism-cli/internal/chatgpt"
 	"github.com/circlesac/prism-cli/internal/copilot"
+	prismcursor "github.com/circlesac/prism-cli/internal/cursor"
 	"github.com/circlesac/prism-cli/internal/gemini"
 	"github.com/circlesac/prism-cli/internal/opencodego"
 	"github.com/circlesac/prism-cli/internal/secret"
@@ -78,6 +79,9 @@ func Run(
 	}
 	if args[0] == "codex" {
 		return runCodexCommand(args[1:], stdout)
+	}
+	if args[0] == "cursor" {
+		return runCursorCommand(ctx, args[1:], stdout, stderr)
 	}
 	providerName := strings.ToLower(args[0])
 	if !api.SupportedProvider(providerName) {
@@ -200,6 +204,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 	anthropicResults := make(chan usageResult, 1)
 	copilotResults := make(chan usageResult, 1)
 	openCodeResults := make(chan usageResult, 1)
+	cursorResults := make(chan usageResult, 1)
 	go func() {
 		usage, fetchErr := fetchChatGPTUsage(ctx, options)
 		chatGPTResults <- usageResult{usage: usage, err: fetchErr}
@@ -216,6 +221,10 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 		usage, fetchErr := fetchOpenCodeGoUsage(ctx)
 		openCodeResults <- usageResult{usage: usage, err: fetchErr}
 	}()
+	go func() {
+		usage, fetchErr := fetchCursorUsage(ctx, prismcursor.UsageOptions{})
+		cursorResults <- usageResult{usage: usage, err: fetchErr}
+	}()
 
 	results := []struct {
 		name   string
@@ -225,6 +234,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 		{name: "Claude", result: <-anthropicResults},
 		{name: "Copilot", result: <-copilotResults},
 		{name: "OpenCode", result: <-openCodeResults},
+		{name: "Cursor", result: <-cursorResults},
 	}
 	succeeded := 0
 	var failures []string
@@ -770,6 +780,7 @@ func printHelp(output io.Writer) {
 Usage:
   prism claude [--account <alias-or-id>] [claude arguments...]
   prism codex enable|disable|status
+  prism cursor install|update|login|status|models|usage
   prism usage [--profile <name>]
   prism chatgpt usage [--profile <name>]
   prism copilot usage [--profile <name>]
