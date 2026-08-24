@@ -104,7 +104,7 @@ func runGemini(
 	}
 	defer os.RemoveAll(settingsDirectory)
 	settingsPath := filepath.Join(settingsDirectory, "settings.json")
-	if err := os.WriteFile(settingsPath, []byte(`{"security":{"auth":{"selectedType":"gateway"}}}`), 0o600); err != nil {
+	if err := os.WriteFile(settingsPath, []byte(`{"security":{"auth":{"selectedType":"gateway","useExternal":true}}}`), 0o600); err != nil {
 		return errors.New("could not create Gemini CLI gateway settings")
 	}
 
@@ -113,7 +113,7 @@ func runGemini(
 	command.Stdin = stdin
 	command.Stdout = stdout
 	command.Stderr = stderr
-	command.Env = geminiEnvironment(os.Environ(), bridge.url, bridge.headerName+": "+bridge.headerValue, settingsPath)
+	command.Env = geminiEnvironment(os.Environ(), bridge.url, bridge.headerName+": "+bridge.headerValue, settingsPath, isAutomatedGeminiPrompt(args))
 	if err := command.Run(); err != nil {
 		var exitError *exec.ExitError
 		if errors.As(err, &exitError) {
@@ -217,8 +217,17 @@ func (bridge *geminiBridge) close() {
 	_ = bridge.server.Shutdown(ctx)
 }
 
-func geminiEnvironment(environment []string, baseURL string, customHeaders string, settingsPath string) []string {
-	filtered := make([]string, 0, len(environment)+3)
+func isAutomatedGeminiPrompt(args []string) bool {
+	for _, argument := range args {
+		if argument == "-p" || argument == "--prompt" || strings.HasPrefix(argument, "--prompt=") {
+			return true
+		}
+	}
+	return false
+}
+
+func geminiEnvironment(environment []string, baseURL string, customHeaders string, settingsPath string, trustWorkspace bool) []string {
+	filtered := make([]string, 0, len(environment)+4)
 	for _, entry := range environment {
 		name, _, _ := strings.Cut(entry, "=")
 		switch strings.ToUpper(name) {
@@ -227,13 +236,20 @@ func geminiEnvironment(environment []string, baseURL string, customHeaders strin
 			"GEMINI_CLI_SYSTEM_SETTINGS_PATH":
 			continue
 		}
+		if trustWorkspace && strings.EqualFold(name, "GEMINI_CLI_TRUST_WORKSPACE") {
+			continue
+		}
 		filtered = append(filtered, entry)
 	}
-	return append(filtered,
+	filtered = append(filtered,
 		"GOOGLE_GEMINI_BASE_URL="+baseURL,
 		"GEMINI_CLI_CUSTOM_HEADERS="+customHeaders,
 		"GEMINI_CLI_SYSTEM_SETTINGS_PATH="+settingsPath,
 	)
+	if trustWorkspace {
+		filtered = append(filtered, "GEMINI_CLI_TRUST_WORKSPACE=true")
+	}
+	return filtered
 }
 
 func printGeminiHelp(output io.Writer) {
