@@ -33,6 +33,30 @@ func TestCursorAgentAlwaysDisablesAutoUpdate(t *testing.T) {
 	}
 }
 
+func TestCursorAgentUsesIsolatedOfficialCredentialStoreForAccount(t *testing.T) {
+	original := cursorAgentExecutable
+	defer func() { cursorAgentExecutable = original }()
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "auth.json"), []byte(`{"accessToken":"account-token"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executable := filepath.Join(directory, "cursor-agent")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\nprintf 'config=%s\\nstore=%s\\ntoken=%s\\n' \"$CURSOR_CONFIG_DIR\" \"$AGENT_CLI_CREDENTIAL_STORE\" \"$CURSOR_AUTH_TOKEN\"\nprintf '%s\\n' \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cursorAgentExecutable = func() (string, error) { return executable, nil }
+
+	var output bytes.Buffer
+	if err := runCursorAgentForAccount(context.Background(), []string{"status"}, directory, strings.NewReader(""), &output, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"config=" + directory, "store=memory", "token=account-token", "--disable-auto-update\nstatus"} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("output omitted %q: %s", value, output.String())
+		}
+	}
+}
+
 func TestCursorInstallUpdateAndUpgradeUseTheManagedInstaller(t *testing.T) {
 	originalInstall := installCursorAgent
 	originalExecutable := cursorAgentExecutable
@@ -61,6 +85,7 @@ func TestCursorInstallUpdateAndUpgradeUseTheManagedInstaller(t *testing.T) {
 }
 
 func TestCursorUsageShowsBothMonthlyPools(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	originalUsage := fetchCursorUsage
 	originalExecutable := cursorAgentExecutable
 	defer func() {
@@ -92,6 +117,7 @@ func TestCursorUsageShowsBothMonthlyPools(t *testing.T) {
 }
 
 func TestCursorUsageReportsAuthenticationErrorWithoutZeroUsage(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	originalUsage := fetchCursorUsage
 	defer func() { fetchCursorUsage = originalUsage }()
 	fetchCursorUsage = func(context.Context, prismcursor.UsageOptions) (api.ProviderUsage, error) {
@@ -136,7 +162,7 @@ func TestCursorHelpDocumentsIsolatedInstallAndUsage(t *testing.T) {
 	if err := runCursorCommand(context.Background(), []string{"help"}, &output, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"prism cursor install|update", "prism cursor usage", "without replacing ~/.local/bin/agent", "does not save or print the token"} {
+	for _, value := range []string{"prism cursor install|update", "prism cursor usage", "without replacing ~/.local/bin/agent", "balanced rotation", "auth import"} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("help did not contain %q: %s", value, output.String())
 		}

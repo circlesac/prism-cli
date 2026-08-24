@@ -18,7 +18,6 @@ import (
 	"github.com/circlesac/prism-cli/internal/api"
 	"github.com/circlesac/prism-cli/internal/chatgpt"
 	"github.com/circlesac/prism-cli/internal/copilot"
-	prismcursor "github.com/circlesac/prism-cli/internal/cursor"
 	"github.com/circlesac/prism-cli/internal/gemini"
 	"github.com/circlesac/prism-cli/internal/opencodego"
 	"github.com/circlesac/prism-cli/internal/secret"
@@ -76,6 +75,9 @@ func Run(
 	}
 	if args[0] == "claude" {
 		return runClaudeCommand(ctx, args[1:], stdout, stderr)
+	}
+	if args[0] == "gemini" && isGeminiCLIInvocation(args[1:]) {
+		return runGeminiCommand(ctx, args[1:], stdout, stderr)
 	}
 	if args[0] == "codex" {
 		return runCodexCommand(args[1:], stdout)
@@ -222,7 +224,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 		openCodeResults <- usageResult{usage: usage, err: fetchErr}
 	}()
 	go func() {
-		usage, fetchErr := fetchCursorUsage(ctx, prismcursor.UsageOptions{})
+		usage, fetchErr := fetchAllCursorUsage(ctx, "")
 		cursorResults <- usageResult{usage: usage, err: fetchErr}
 	}()
 
@@ -780,7 +782,8 @@ func printHelp(output io.Writer) {
 Usage:
   prism claude [--account <alias-or-id>] [claude arguments...]
   prism codex enable|disable|status
-  prism cursor install|update|login|status|models|usage
+  prism cursor [--account <name-or-email>] [cursor arguments...]
+  prism gemini [--account <alias-or-id>] [gemini arguments...]
   prism usage [--profile <name>]
   prism chatgpt usage [--profile <name>]
   prism copilot usage [--profile <name>]

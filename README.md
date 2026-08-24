@@ -34,11 +34,14 @@ usage from the other providers.
 ## Cursor
 
 Install the official Cursor Agent without replacing an existing
-`~/.local/bin/agent`, then sign in with Cursor's supported browser flow:
+`~/.local/bin/agent`, then register one or more accounts with Cursor's
+supported browser flow:
 
 ```sh
 prism cursor install
 prism cursor login
+prism cursor login --name work-admin
+prism cursor auth list
 prism cursor status
 prism cursor models
 ```
@@ -47,6 +50,7 @@ Run Cursor Agent through Prism while passing its arguments through unchanged:
 
 ```sh
 prism cursor --mode ask -p 'Reply with exactly CURSOR_OK.'
+prism cursor --account work-admin --mode ask -p 'Reply with exactly CURSOR_OK.'
 ```
 
 Prism disables Cursor Agent's self-updater on every launch. Use
@@ -59,11 +63,42 @@ Show the monthly Cursor Models and Other Models pools separately:
 prism cursor usage
 ```
 
-Cursor login remains in Cursor Agent's official credential store. Prism reads
-the access token only for the usage request and does not save or print it.
+Without `--account`, Prism rotates across the registered accounts. Usage shows
+all registered accounts; pass `--account` to show one. To migrate the Cursor
+login that was active before this feature, run:
+
+```sh
+prism cursor auth import
+```
+
+Each login remains in an isolated profile supported by the official Cursor
+Agent, and Prism never prints its token.
 Because Cursor does not publish a standalone usage CLI contract, usage is a
 read-only best-effort integration and reports an explicit error when the login
 or quota response is unavailable.
+
+## Gemini CLI
+
+Register each Google account, then run the official Gemini CLI through Prism:
+
+```sh
+prism gemini auth login
+prism gemini auth list
+prism gemini -p 'Reply with exactly GEMINI_OK.'
+```
+
+Prism rotates across registered Gemini accounts unless `--account` selects one:
+
+```sh
+prism gemini --account work-admin -p 'Reply with exactly GEMINI_OK.'
+```
+
+The default model is `gemini-3.7-flash`. For harder software-engineering or
+multi-step tool-use tasks, select `gemini-3.1-pro-preview` explicitly:
+
+```sh
+prism gemini --model gemini-3.1-pro-preview -p 'Review this repository.'
+```
 
 ## Anthropic
 

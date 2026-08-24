@@ -36,17 +36,22 @@ type cursorIdentity struct {
 }
 
 type UsageOptions struct {
-	HTTPClient *http.Client
-	BaseURL    string
-	Token      string
-	Now        time.Time
+	HTTPClient      *http.Client
+	BaseURL         string
+	Token           string
+	ConfigDirectory string
+	Now             time.Time
 }
 
 func FetchUsage(ctx context.Context, options UsageOptions) (api.ProviderUsage, error) {
 	token := options.Token
 	if token == "" {
 		var err error
-		token, err = readAccessToken(ctx)
+		if options.ConfigDirectory != "" {
+			token, err = readAccessTokenFile(filepath.Join(options.ConfigDirectory, "auth.json"))
+		} else {
+			token, err = readAccessToken(ctx)
+		}
 		if err != nil {
 			return api.ProviderUsage{}, err
 		}
@@ -69,7 +74,7 @@ func FetchUsage(ctx context.Context, options UsageOptions) (api.ProviderUsage, e
 	if err := fetchJSON(ctx, client, baseURL+"/api/usage-summary", cookie, &summary); err != nil {
 		return api.ProviderUsage{}, err
 	}
-	identity := readLocalIdentity(subject)
+	identity := readLocalIdentityFromDirectory(subject, options.ConfigDirectory)
 	if identity.Email == "" {
 		identityErr := fetchJSON(ctx, client, baseURL+"/api/auth/me", cookie, &identity)
 		if identityErr != nil || identity.Sub != "" && identity.Sub != userID && identity.Sub != subject {
@@ -244,9 +249,16 @@ func accessTokenIdentity(token string) (string, string, error) {
 }
 
 func readLocalIdentity(subject string) cursorIdentity {
-	directory, err := configDirectory()
-	if err != nil {
-		return cursorIdentity{}
+	return readLocalIdentityFromDirectory(subject, "")
+}
+
+func readLocalIdentityFromDirectory(subject string, directory string) cursorIdentity {
+	if directory == "" {
+		var err error
+		directory, err = configDirectory()
+		if err != nil {
+			return cursorIdentity{}
+		}
 	}
 	data, err := os.ReadFile(filepath.Join(directory, "cli-config.json"))
 	if err != nil {
@@ -262,4 +274,8 @@ func readLocalIdentity(subject string) cursorIdentity {
 		return cursorIdentity{}
 	}
 	return cursorIdentity{Email: strings.TrimSpace(config.AuthInfo.Email), Sub: subject}
+}
+
+func TokenFromDirectory(directory string) (string, error) {
+	return readAccessTokenFile(filepath.Join(directory, "auth.json"))
 }
