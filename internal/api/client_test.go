@@ -8,6 +8,15 @@ import (
 	"testing"
 )
 
+func TestSupportedProvidersExcludeUsageBilledGeminiAIStudio(t *testing.T) {
+	if SupportedProvider("gemini-ai") {
+		t.Fatal("gemini-ai must remain disabled")
+	}
+	if !SupportedProvider("gemini") {
+		t.Fatal("Gemini subscription OAuth must remain supported")
+	}
+}
+
 func TestCredentialLifecycleUsesPrismAPIWithoutLeakingSecretsInURL(t *testing.T) {
 	var savedRequest map[string]any
 	removed := false

@@ -798,8 +798,8 @@ Usage:
   prism <provider> auth remove <credential-id> [--profile <name>]
   prism version
 
-Static providers: gemini-ai, groq, mistral, deepseek, opencode-go, cloudflare,
-vercel, and gemini-app. Secret values are read from hidden stdin and are never
+Static providers: groq, mistral, deepseek, opencode-go, cloudflare, vercel,
+and gemini-app. Secret values are read from hidden stdin and are never
 accepted as command-line options. Cloudflare requires --provider-account-id;
 Vercel accepts --owner-id and prompts separately for an optional session cookie.
 
