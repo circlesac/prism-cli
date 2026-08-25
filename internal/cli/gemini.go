@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -158,6 +159,9 @@ func runGemini(
 }
 
 func runAntigravity(ctx context.Context, executable geminiCLIExecutable, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	if err := disableAntigravityCreditOverages(); err != nil {
+		return err
+	}
 	commandArgs := append(append([]string{}, executable.prefix...), args...)
 	command := exec.CommandContext(ctx, executable.path, commandArgs...)
 	command.Stdin = stdin
@@ -170,6 +174,67 @@ func runAntigravity(ctx context.Context, executable geminiCLIExecutable, args []
 			return fmt.Errorf("Antigravity CLI exited with status %d", exitError.ExitCode())
 		}
 		return fmt.Errorf("could not run Antigravity CLI: %w", err)
+	}
+	return nil
+}
+
+var antigravitySettingsPath = defaultAntigravitySettingsPath
+
+func defaultAntigravitySettingsPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".gemini", "antigravity-cli", "settings.json")
+}
+
+func disableAntigravityCreditOverages() error {
+	path := antigravitySettingsPath()
+	if path == "" {
+		return errors.New("could not locate Antigravity CLI settings")
+	}
+	settings := map[string]any{}
+	contents, err := os.ReadFile(path)
+	if err == nil {
+		if len(strings.TrimSpace(string(contents))) != 0 {
+			if err := json.Unmarshal(contents, &settings); err != nil {
+				return errors.New("Antigravity CLI settings are invalid; fix settings.json before using Prism Gemini")
+			}
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return errors.New("could not read Antigravity CLI settings")
+	}
+	if value, ok := settings["useG1Credits"].(bool); ok && !value {
+		return nil
+	}
+	settings["useG1Credits"] = false
+	encoded, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return errors.New("could not encode Antigravity CLI settings")
+	}
+	encoded = append(encoded, '\n')
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return errors.New("could not create Antigravity CLI settings directory")
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".settings-*")
+	if err != nil {
+		return errors.New("could not write Antigravity CLI settings")
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return errors.New("could not protect Antigravity CLI settings")
+	}
+	if _, err := temporary.Write(encoded); err != nil {
+		temporary.Close()
+		return errors.New("could not write Antigravity CLI settings")
+	}
+	if err := temporary.Close(); err != nil {
+		return errors.New("could not close Antigravity CLI settings")
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return errors.New("could not activate Antigravity CLI settings")
 	}
 	return nil
 }
@@ -326,6 +391,7 @@ func printGeminiHelp(output io.Writer) {
 
 	Runs Antigravity CLI (agy) with the signed-in Google Gemini subscription.
 	AI Studio API keys are intentionally unsupported to prevent usage-based charges.
+	Prism forces useG1Credits=false before every run to prevent paid overages.
 	Use 'prism gemini usage' or 'prism usage' to show the subscription quota.
 	The default model is gemini-3.7-flash-low; use --model gemini-3.1-pro-high for
 hard software-engineering and multi-step tool-use work.

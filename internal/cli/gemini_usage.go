@@ -44,6 +44,9 @@ func runGeminiUsage(ctx context.Context, stdout io.Writer, stderr io.Writer) err
 }
 
 func fetchAntigravityUsage(ctx context.Context) (api.ProviderUsage, error) {
+	if err := disableAntigravityCreditOverages(); err != nil {
+		return api.ProviderUsage{}, err
+	}
 	executable, err := findGeminiCLIExecutable()
 	if err != nil {
 		return api.ProviderUsage{}, err

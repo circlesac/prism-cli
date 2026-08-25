@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -129,8 +130,13 @@ func TestRunGeminiUsesOfficialCLIWithGatewayEnvironment(t *testing.T) {
 
 func TestAntigravityUsageParsesSubscriptionWindowsAndScrubsAPIKeys(t *testing.T) {
 	original := findGeminiCLIExecutable
-	defer func() { findGeminiCLIExecutable = original }()
+	originalSettings := antigravitySettingsPath
+	defer func() {
+		findGeminiCLIExecutable = original
+		antigravitySettingsPath = originalSettings
+	}()
 	directory := t.TempDir()
+	antigravitySettingsPath = func() string { return filepath.Join(directory, "settings.json") }
 	executable := filepath.Join(directory, "agy")
 	if err := os.WriteFile(executable, []byte("#!/bin/sh\nif [ -n \"$GEMINI_API_KEY$GOOGLE_API_KEY$GOOGLE_GEMINI_BASE_URL\" ]; then exit 3; fi\nprintf '%s' '{\"status\":\"SUCCESS\",\"command\":{\"data\":{\"groups\":[{\"name\":\"Gemini Models\",\"buckets\":[{\"name\":\"Five Hour Limit Remaining\",\"window\":\"5h\",\"remaining_fraction\":0.75,\"reset_time\":\"2026-08-25T13:00:00Z\"}]}]}}}'\n"), 0o755); err != nil {
 		t.Fatal(err)
@@ -151,5 +157,39 @@ func TestAntigravityUsageParsesSubscriptionWindowsAndScrubsAPIKeys(t *testing.T)
 	limit := usage.Accounts[0].Limits[0]
 	if limit.RemainingPercent != 75 || limit.UsedPercent != 25 || limit.Window != "5h" || limit.WindowSeconds == nil || *limit.WindowSeconds != 18000 {
 		t.Fatalf("limit = %#v", limit)
+	}
+}
+
+func TestRunAntigravityDisablesCreditOveragesBeforeStartingCLI(t *testing.T) {
+	original := antigravitySettingsPath
+	defer func() { antigravitySettingsPath = original }()
+	directory := t.TempDir()
+	path := filepath.Join(directory, "settings.json")
+	antigravitySettingsPath = func() string { return path }
+	if err := os.WriteFile(path, []byte("{\"enableTelemetry\":false,\"useG1Credits\":true}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executable := filepath.Join(directory, "agy")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\ngrep -q '\"useG1Credits\": false' \"$PRISM_TEST_SETTINGS\" || exit 9\nprintf CREDIT_GUARD_OK\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PRISM_TEST_SETTINGS", path)
+	var output bytes.Buffer
+	if err := runAntigravity(context.Background(), geminiCLIExecutable{path: executable, direct: true}, nil, strings.NewReader(""), &output, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "CREDIT_GUARD_OK" {
+		t.Fatalf("output = %q", output.String())
+	}
+	var settings map[string]any
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(contents, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings["useG1Credits"] != false {
+		t.Fatalf("settings = %#v", settings)
 	}
 }
