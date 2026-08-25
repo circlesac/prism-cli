@@ -120,6 +120,8 @@ func Run(
 		var usage api.ProviderUsage
 		if providerName == "opencode-go" {
 			usage, err = fetchOpenCodeGoUsage(ctx)
+		} else if providerName == "gemini" {
+			usage, err = fetchGeminiUsage(ctx)
 		} else if providerName == "anthropic" {
 			usage, err = fetchAnthropicUsage(ctx, options)
 		} else if providerName == "copilot" {
@@ -207,6 +209,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 	copilotResults := make(chan usageResult, 1)
 	openCodeResults := make(chan usageResult, 1)
 	cursorResults := make(chan usageResult, 1)
+	geminiResults := make(chan usageResult, 1)
 	go func() {
 		usage, fetchErr := fetchChatGPTUsage(ctx, options)
 		chatGPTResults <- usageResult{usage: usage, err: fetchErr}
@@ -227,6 +230,10 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 		usage, fetchErr := fetchAllCursorUsage(ctx, "")
 		cursorResults <- usageResult{usage: usage, err: fetchErr}
 	}()
+	go func() {
+		usage, fetchErr := fetchGeminiUsage(ctx)
+		geminiResults <- usageResult{usage: usage, err: fetchErr}
+	}()
 
 	results := []struct {
 		name   string
@@ -237,6 +244,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 		{name: "Copilot", result: <-copilotResults},
 		{name: "OpenCode", result: <-openCodeResults},
 		{name: "Cursor", result: <-cursorResults},
+		{name: "Gemini", result: <-geminiResults},
 	}
 	succeeded := 0
 	var failures []string
@@ -263,7 +271,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 func validateCommand(provider string, command string, positionals []string, options commonOptions) error {
 	switch command {
 	case "usage":
-		if provider != "chatgpt" && provider != "anthropic" && provider != "copilot" && provider != "opencode-go" {
+		if provider != "chatgpt" && provider != "anthropic" && provider != "copilot" && provider != "opencode-go" && provider != "gemini" {
 			return fmt.Errorf("%s usage is not supported", provider)
 		}
 		if len(positionals) != 0 {

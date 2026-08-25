@@ -43,12 +43,14 @@ func TestCombinedUsageShowsEveryProvider(t *testing.T) {
 	originalCopilot := fetchCopilotUsage
 	originalOpenCode := fetchOpenCodeGoUsage
 	originalCursor := fetchCursorUsage
+	originalGemini := fetchGeminiUsage
 	defer func() {
 		fetchChatGPTUsage = originalChatGPT
 		fetchAnthropicUsage = originalAnthropic
 		fetchCopilotUsage = originalCopilot
 		fetchOpenCodeGoUsage = originalOpenCode
 		fetchCursorUsage = originalCursor
+		fetchGeminiUsage = originalGemini
 	}()
 	plan := "pro"
 	var chatGPTOptions commonOptions
@@ -89,6 +91,9 @@ func TestCombinedUsageShowsEveryProvider(t *testing.T) {
 			Name: "cursor@example.com", Limits: []api.UsageLimit{{Name: "Cursor Models", Window: "monthly", UsedPercent: 5, RemainingPercent: 95}},
 		}}}, nil
 	}
+	fetchGeminiUsage = func(context.Context) (api.ProviderUsage, error) {
+		return api.ProviderUsage{Provider: "gemini", Accounts: []api.UsageAccount{{Name: "Google Gemini subscription", Limits: []api.UsageLimit{{Name: "Gemini Models — Five Hour Limit Remaining", Window: "5h", RemainingPercent: 95}}}}}, nil
+	}
 
 	var output bytes.Buffer
 	if err := Run(context.Background(), []string{"usage", "--profile", "work-admin"}, &output, &bytes.Buffer{}, "test"); err != nil {
@@ -98,7 +103,7 @@ func TestCombinedUsageShowsEveryProvider(t *testing.T) {
 		t.Fatalf("ChatGPT options = %+v", chatGPTOptions)
 	}
 	text := output.String()
-	if strings.Count(text, "┌") != 1 || !strings.Contains(text, "│ PROVIDER │ ACCOUNT") || !strings.Contains(text, "ChatGPT") || !strings.Contains(text, "Claude") || !strings.Contains(text, "Copilot") || !strings.Contains(text, "OpenCode") || !strings.Contains(text, "Cursor") || !strings.Contains(text, "Max 20x") || !strings.Contains(text, "person@example.com") || !strings.Contains(text, "premium requests") || strings.Contains(text, "OpenCode workspace") {
+	if strings.Count(text, "┌") != 1 || !strings.Contains(text, "│ PROVIDER │ ACCOUNT") || !strings.Contains(text, "ChatGPT") || !strings.Contains(text, "Claude") || !strings.Contains(text, "Copilot") || !strings.Contains(text, "OpenCode") || !strings.Contains(text, "Cursor") || !strings.Contains(text, "Gemini") || !strings.Contains(text, "Max 20x") || !strings.Contains(text, "person@example.com") || !strings.Contains(text, "premium requests") || strings.Contains(text, "OpenCode workspace") {
 		t.Fatalf("output = %q", text)
 	}
 }
@@ -110,12 +115,14 @@ func TestCombinedUsageKeepsPartialResults(t *testing.T) {
 	originalCopilot := fetchCopilotUsage
 	originalOpenCode := fetchOpenCodeGoUsage
 	originalCursor := fetchCursorUsage
+	originalGemini := fetchGeminiUsage
 	defer func() {
 		fetchChatGPTUsage = originalChatGPT
 		fetchAnthropicUsage = originalAnthropic
 		fetchCopilotUsage = originalCopilot
 		fetchOpenCodeGoUsage = originalOpenCode
 		fetchCursorUsage = originalCursor
+		fetchGeminiUsage = originalGemini
 	}()
 	fetchChatGPTUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
 		return api.ProviderUsage{}, errors.New("ChatGPT login unavailable")
@@ -134,6 +141,9 @@ func TestCombinedUsageKeepsPartialResults(t *testing.T) {
 	fetchCursorUsage = func(context.Context, prismcursor.UsageOptions) (api.ProviderUsage, error) {
 		return api.ProviderUsage{}, errors.New("Cursor login unavailable")
 	}
+	fetchGeminiUsage = func(context.Context) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("Gemini login unavailable")
+	}
 
 	var output bytes.Buffer
 	if err := Run(context.Background(), []string{"usage"}, &output, &bytes.Buffer{}, "test"); err != nil {
@@ -151,12 +161,14 @@ func TestCombinedUsageFailsOnlyWhenEveryProviderFails(t *testing.T) {
 	originalCopilot := fetchCopilotUsage
 	originalOpenCode := fetchOpenCodeGoUsage
 	originalCursor := fetchCursorUsage
+	originalGemini := fetchGeminiUsage
 	defer func() {
 		fetchChatGPTUsage = originalChatGPT
 		fetchAnthropicUsage = originalAnthropic
 		fetchCopilotUsage = originalCopilot
 		fetchOpenCodeGoUsage = originalOpenCode
 		fetchCursorUsage = originalCursor
+		fetchGeminiUsage = originalGemini
 	}()
 	fetchChatGPTUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
 		return api.ProviderUsage{}, errors.New("unavailable")
@@ -173,10 +185,13 @@ func TestCombinedUsageFailsOnlyWhenEveryProviderFails(t *testing.T) {
 	fetchCursorUsage = func(context.Context, prismcursor.UsageOptions) (api.ProviderUsage, error) {
 		return api.ProviderUsage{}, errors.New("unavailable")
 	}
+	fetchGeminiUsage = func(context.Context) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("unavailable")
+	}
 
 	var output bytes.Buffer
 	err := Run(context.Background(), []string{"usage"}, &output, &bytes.Buffer{}, "test")
-	if err == nil || err.Error() != "usage is unavailable for ChatGPT, Claude, Copilot, OpenCode, and Cursor" {
+	if err == nil || err.Error() != "usage is unavailable for ChatGPT, Claude, Copilot, OpenCode, Cursor, and Gemini" {
 		t.Fatalf("error = %v", err)
 	}
 }

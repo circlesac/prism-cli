@@ -17,7 +17,7 @@ import (
 )
 
 func TestGeminiDefaultsTo37FlashAndPreservesExplicitModel(t *testing.T) {
-	if got := withDefaultGeminiModel([]string{"-p", "hello"}); !reflect.DeepEqual(got, []string{"--model", "gemini-3.7-flash", "-p", "hello"}) {
+	if got := withDefaultGeminiModel([]string{"-p", "hello"}); !reflect.DeepEqual(got, []string{"--model", "gemini-3.7-flash-low", "-p", "hello"}) {
 		t.Fatalf("default args = %#v", got)
 	}
 	for _, args := range [][]string{{"--model", "gemini-3.1-pro-preview", "-p", "hard"}, {"-m", "gemini-3.1-pro-preview"}, {"--model=gemini-3.1-pro-preview"}} {
@@ -32,7 +32,7 @@ func TestGeminiHelpDocumentsOfficialCLIAccountsAndModels(t *testing.T) {
 	if err := runGeminiCommand(context.Background(), []string{"--help"}, &output, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"official Gemini CLI", "--account", "subscription", "AI Studio API keys are intentionally unsupported", "gemini-3.7-flash", "gemini-3.1-pro-preview"} {
+	for _, value := range []string{"Antigravity CLI", "subscription", "AI Studio API keys are intentionally unsupported", "gemini-3.7-flash-low", "gemini-3.1-pro-high"} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("help omitted %q: %s", value, output.String())
 		}
@@ -120,9 +120,36 @@ func TestRunGeminiUsesOfficialCLIWithGatewayEnvironment(t *testing.T) {
 	if err := runGemini(context.Background(), upstream.URL, "circles-secret", "person@example.com", withDefaultGeminiModel([]string{"-p", "hello"}), strings.NewReader(""), &output, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"--model\ngemini-3.7-flash\n-p\nhello", "base=http://127.0.0.1:", "headers=X-Prism-Gemini-Bridge:", "settings=/", "trust=true", `"selectedType":"gateway"`, `"useExternal":true`} {
+	for _, value := range []string{"--model\ngemini-3.7-flash-low\n-p\nhello", "base=http://127.0.0.1:", "headers=X-Prism-Gemini-Bridge:", "settings=/", "trust=true", `"selectedType":"gateway"`, `"useExternal":true`} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("output omitted %q: %s", value, output.String())
 		}
+	}
+}
+
+func TestAntigravityUsageParsesSubscriptionWindowsAndScrubsAPIKeys(t *testing.T) {
+	original := findGeminiCLIExecutable
+	defer func() { findGeminiCLIExecutable = original }()
+	directory := t.TempDir()
+	executable := filepath.Join(directory, "agy")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\nif [ -n \"$GEMINI_API_KEY$GOOGLE_API_KEY$GOOGLE_GEMINI_BASE_URL\" ]; then exit 3; fi\nprintf '%s' '{\"status\":\"SUCCESS\",\"command\":{\"data\":{\"groups\":[{\"name\":\"Gemini Models\",\"buckets\":[{\"name\":\"Five Hour Limit Remaining\",\"window\":\"5h\",\"remaining_fraction\":0.75,\"reset_time\":\"2026-08-25T13:00:00Z\"}]}]}}}'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	findGeminiCLIExecutable = func() (geminiCLIExecutable, error) {
+		return geminiCLIExecutable{path: executable, direct: true}, nil
+	}
+	t.Setenv("GEMINI_API_KEY", "must-not-pass")
+	t.Setenv("GOOGLE_API_KEY", "must-not-pass")
+	t.Setenv("GOOGLE_GEMINI_BASE_URL", "must-not-pass")
+	usage, err := fetchAntigravityUsage(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Provider != "gemini" || len(usage.Accounts) != 1 || len(usage.Accounts[0].Limits) != 1 {
+		t.Fatalf("usage = %#v", usage)
+	}
+	limit := usage.Accounts[0].Limits[0]
+	if limit.RemainingPercent != 75 || limit.UsedPercent != 25 || limit.Window != "5h" || limit.WindowSeconds == nil || *limit.WindowSeconds != 18000 {
+		t.Fatalf("limit = %#v", limit)
 	}
 }

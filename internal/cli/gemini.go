@@ -23,11 +23,12 @@ import (
 	"github.com/circlesac/prism-cli/internal/api"
 )
 
-const defaultGeminiModel = "gemini-3.7-flash"
+const defaultGeminiModel = "gemini-3.7-flash-low"
 
 type geminiCLIExecutable struct {
 	path   string
 	prefix []string
+	direct bool
 }
 
 type geminiBridge struct {
@@ -44,7 +45,7 @@ func isGeminiCLIInvocation(args []string) bool {
 		return true
 	}
 	switch args[0] {
-	case "auth", "login", "add", "list", "remove", "usage":
+	case "auth", "login", "add", "list", "remove":
 		return false
 	default:
 		return true
@@ -52,9 +53,18 @@ func isGeminiCLIInvocation(args []string) bool {
 }
 
 func runGeminiCommand(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
+	if len(args) > 0 && args[0] == "usage" {
+		if len(args) != 1 {
+			return errors.New("usage: prism gemini usage")
+		}
+		return runGeminiUsage(ctx, stdout, stderr)
+	}
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
 		printGeminiHelp(stdout)
 		return nil
+	}
+	if executable, executableErr := findGeminiCLIExecutable(); executableErr == nil && executable.direct {
+		return runAntigravity(ctx, executable, withDefaultGeminiModel(args), os.Stdin, stdout, stderr)
 	}
 	account, passthrough, err := parseGeminiOptions(args)
 	if err != nil {
@@ -111,6 +121,10 @@ func runGemini(
 	if err != nil {
 		return err
 	}
+	if executable.direct {
+		return runAntigravity(ctx, executable, args, stdin, stdout, stderr)
+	}
+
 	bridge, err := startGeminiBridge(prismURL, prismCredential, account, stderr)
 	if err != nil {
 		return err
@@ -143,7 +157,27 @@ func runGemini(
 	return nil
 }
 
+func runAntigravity(ctx context.Context, executable geminiCLIExecutable, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	commandArgs := append(append([]string{}, executable.prefix...), args...)
+	command := exec.CommandContext(ctx, executable.path, commandArgs...)
+	command.Stdin = stdin
+	command.Stdout = stdout
+	command.Stderr = stderr
+	command.Env = subscriptionGeminiEnvironment(os.Environ())
+	if err := command.Run(); err != nil {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) {
+			return fmt.Errorf("Antigravity CLI exited with status %d", exitError.ExitCode())
+		}
+		return fmt.Errorf("could not run Antigravity CLI: %w", err)
+	}
+	return nil
+}
+
 func findGeminiCLI() (geminiCLIExecutable, error) {
+	if path, err := exec.LookPath("agy"); err == nil {
+		return geminiCLIExecutable{path: path, direct: true}, nil
+	}
 	if path, err := exec.LookPath("gemini"); err == nil {
 		return geminiCLIExecutable{path: path}, nil
 	}
@@ -151,6 +185,19 @@ func findGeminiCLI() (geminiCLIExecutable, error) {
 		return geminiCLIExecutable{path: path, prefix: []string{"--yes", "@google/gemini-cli"}}, nil
 	}
 	return geminiCLIExecutable{}, errors.New("Gemini CLI is not installed and npx is not on PATH")
+}
+
+func subscriptionGeminiEnvironment(environment []string) []string {
+	filtered := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		name, _, _ := strings.Cut(entry, "=")
+		switch strings.ToUpper(name) {
+		case "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GEMINI_BASE_URL", "GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_VERTEX_BASE_URL":
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
 }
 
 func parseGeminiOptions(args []string) (string, []string, error) {
@@ -277,10 +324,10 @@ func printGeminiHelp(output io.Writer) {
   prism gemini auth login|list|remove
   prism gemini [--account <alias-or-id>] [Gemini CLI arguments...]
 
-Runs the official Gemini CLI through Prism's Vault-backed Google accounts.
-Only fixed-price Gemini subscription and Code Assist OAuth accounts are used;
-AI Studio API keys are intentionally unsupported to prevent usage-based charges.
-The default model is gemini-3.7-flash; use --model gemini-3.1-pro-preview for
+	Runs Antigravity CLI (agy) with the signed-in Google Gemini subscription.
+	AI Studio API keys are intentionally unsupported to prevent usage-based charges.
+	Use 'prism gemini usage' or 'prism usage' to show the subscription quota.
+	The default model is gemini-3.7-flash-low; use --model gemini-3.1-pro-high for
 hard software-engineering and multi-step tool-use work.
 Run 'gemini --help' for Gemini CLI options.`)
 }

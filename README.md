@@ -22,7 +22,7 @@ crcl login
 
 ## Usage
 
-Show ChatGPT, Anthropic, Copilot, OpenCode Go, and Cursor usage together:
+Show ChatGPT, Anthropic, Copilot, OpenCode Go, Cursor, and Gemini subscription usage together:
 
 ```sh
 prism usage
@@ -77,32 +77,29 @@ Because Cursor does not publish a standalone usage CLI contract, usage is a
 read-only best-effort integration and reports an explicit error when the login
 or quota response is unavailable.
 
-## Gemini CLI
+## Gemini subscription (Antigravity CLI)
 
-Register the Google account that owns a fixed-price Gemini or Code Assist
-subscription, then run the official Gemini CLI through Prism:
+Sign in once with the official Antigravity CLI (`agy`) using the Google account
+that owns the Gemini subscription, then run it through Prism:
 
 ```sh
-prism gemini auth login
-prism gemini auth list
+agy
+prism gemini usage
 prism gemini -p 'Reply with exactly GEMINI_OK.'
 ```
 
-Prism rotates across registered subscription accounts unless `--account` selects one:
+`prism gemini` uses the signed-in `agy` profile directly. Prism never reads or
+passes `GEMINI_API_KEY`/`GOOGLE_API_KEY`, and AI Studio API-key authentication is
+intentionally unsupported because it can incur usage-based charges.
+
+`prism usage` and `prism gemini usage` show the Antigravity five-hour and weekly
+subscription windows. Use `/usage` inside `agy` for the same live quota panel.
+
+The default model is `gemini-3.7-flash-low`. For harder software-engineering or
+multi-step tool-use tasks, select `gemini-3.1-pro-high` explicitly:
 
 ```sh
-prism gemini --account work-admin -p 'Reply with exactly GEMINI_OK.'
-```
-
-AI Studio API keys are intentionally unsupported because they can incur
-usage-based charges. The Google account must expose a currently supported
-Gemini CLI or Code Assist subscription tier.
-
-The default model is `gemini-3.7-flash`. For harder software-engineering or
-multi-step tool-use tasks, select `gemini-3.1-pro-preview` explicitly:
-
-```sh
-prism gemini --model gemini-3.1-pro-preview -p 'Review this repository.'
+prism gemini --model gemini-3.1-pro-high -p 'Review this repository.'
 ```
 
 ## Anthropic
@@ -158,11 +155,9 @@ times and whether the current usage pace is likely to exhaust each limit.
 
 ```sh
 prism copilot auth login
-prism gemini auth login
 
 prism groq auth add --name personal
 prism mistral auth add
-prism gemini-ai auth add
 prism deepseek auth add
 prism opencode-go auth add
 prism cloudflare auth add --provider-account-id <cloudflare-account-id>
