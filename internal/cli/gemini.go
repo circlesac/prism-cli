@@ -178,43 +178,51 @@ func runAntigravity(ctx context.Context, executable geminiCLIExecutable, args []
 	return nil
 }
 
-var antigravitySettingsPath = defaultAntigravitySettingsPath
+var antigravityConfigPath = defaultAntigravityConfigPath
 
-func defaultAntigravitySettingsPath() string {
+func defaultAntigravityConfigPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".gemini", "antigravity-cli", "settings.json")
+	return filepath.Join(home, ".gemini", "config", "config.json")
 }
 
 func disableAntigravityCreditOverages() error {
-	path := antigravitySettingsPath()
+	path := antigravityConfigPath()
 	if path == "" {
-		return errors.New("could not locate Antigravity CLI settings")
+		return errors.New("could not locate Antigravity shared settings")
 	}
 	settings := map[string]any{}
 	contents, err := os.ReadFile(path)
 	if err == nil {
 		if len(strings.TrimSpace(string(contents))) != 0 {
 			if err := json.Unmarshal(contents, &settings); err != nil {
-				return errors.New("Antigravity CLI settings are invalid; fix settings.json before using Prism Gemini")
+				return errors.New("Antigravity shared settings are invalid; fix config.json before using Prism Gemini")
 			}
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return errors.New("could not read Antigravity CLI settings")
+		return errors.New("could not read Antigravity shared settings")
 	}
-	if value, ok := settings["useG1Credits"].(bool); ok && !value {
+	userSettings, ok := settings["userSettings"].(map[string]any)
+	if !ok {
+		if settings["userSettings"] != nil {
+			return errors.New("Antigravity shared userSettings are invalid; fix config.json before using Prism Gemini")
+		}
+		userSettings = map[string]any{}
+		settings["userSettings"] = userSettings
+	}
+	if value, ok := userSettings["useG1Credits"].(bool); ok && !value {
 		return nil
 	}
-	settings["useG1Credits"] = false
+	userSettings["useG1Credits"] = false
 	encoded, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return errors.New("could not encode Antigravity CLI settings")
 	}
 	encoded = append(encoded, '\n')
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return errors.New("could not create Antigravity CLI settings directory")
+		return errors.New("could not create Antigravity shared settings directory")
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(path), ".settings-*")
 	if err != nil {
@@ -234,7 +242,7 @@ func disableAntigravityCreditOverages() error {
 		return errors.New("could not close Antigravity CLI settings")
 	}
 	if err := os.Rename(temporaryPath, path); err != nil {
-		return errors.New("could not activate Antigravity CLI settings")
+		return errors.New("could not activate Antigravity shared settings")
 	}
 	return nil
 }

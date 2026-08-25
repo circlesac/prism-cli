@@ -130,13 +130,13 @@ func TestRunGeminiUsesOfficialCLIWithGatewayEnvironment(t *testing.T) {
 
 func TestAntigravityUsageParsesSubscriptionWindowsAndScrubsAPIKeys(t *testing.T) {
 	original := findGeminiCLIExecutable
-	originalSettings := antigravitySettingsPath
+	originalConfig := antigravityConfigPath
 	defer func() {
 		findGeminiCLIExecutable = original
-		antigravitySettingsPath = originalSettings
+		antigravityConfigPath = originalConfig
 	}()
 	directory := t.TempDir()
-	antigravitySettingsPath = func() string { return filepath.Join(directory, "settings.json") }
+	antigravityConfigPath = func() string { return filepath.Join(directory, "config.json") }
 	executable := filepath.Join(directory, "agy")
 	if err := os.WriteFile(executable, []byte("#!/bin/sh\nif [ -n \"$GEMINI_API_KEY$GOOGLE_API_KEY$GOOGLE_GEMINI_BASE_URL\" ]; then exit 3; fi\nprintf '%s' '{\"status\":\"SUCCESS\",\"command\":{\"data\":{\"groups\":[{\"name\":\"Gemini Models\",\"buckets\":[{\"name\":\"Five Hour Limit Remaining\",\"window\":\"5h\",\"remaining_fraction\":0.75,\"reset_time\":\"2026-08-25T13:00:00Z\"}]}]}}}'\n"), 0o755); err != nil {
 		t.Fatal(err)
@@ -161,12 +161,12 @@ func TestAntigravityUsageParsesSubscriptionWindowsAndScrubsAPIKeys(t *testing.T)
 }
 
 func TestRunAntigravityDisablesCreditOveragesBeforeStartingCLI(t *testing.T) {
-	original := antigravitySettingsPath
-	defer func() { antigravitySettingsPath = original }()
+	original := antigravityConfigPath
+	defer func() { antigravityConfigPath = original }()
 	directory := t.TempDir()
-	path := filepath.Join(directory, "settings.json")
-	antigravitySettingsPath = func() string { return path }
-	if err := os.WriteFile(path, []byte("{\"enableTelemetry\":false,\"useG1Credits\":true}\n"), 0o600); err != nil {
+	path := filepath.Join(directory, "config.json")
+	antigravityConfigPath = func() string { return path }
+	if err := os.WriteFile(path, []byte("{\"userSettings\":{\"remoteControlHostname\":\"example-host\",\"useG1Credits\":true}}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	executable := filepath.Join(directory, "agy")
@@ -189,7 +189,8 @@ func TestRunAntigravityDisablesCreditOveragesBeforeStartingCLI(t *testing.T) {
 	if err := json.Unmarshal(contents, &settings); err != nil {
 		t.Fatal(err)
 	}
-	if settings["useG1Credits"] != false {
+	userSettings, ok := settings["userSettings"].(map[string]any)
+	if !ok || userSettings["useG1Credits"] != false || userSettings["remoteControlHostname"] != "example-host" {
 		t.Fatalf("settings = %#v", settings)
 	}
 }

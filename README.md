@@ -92,8 +92,9 @@ prism gemini -p 'Reply with exactly GEMINI_OK.'
 passes `GEMINI_API_KEY`/`GOOGLE_API_KEY`, and AI Studio API-key authentication is
 intentionally unsupported because it can incur usage-based charges.
 Before every Gemini run and usage check, Prism also forces
-`useG1Credits: false` in Antigravity settings so purchased or promotional AI
-credits cannot be consumed after the subscription quota is exhausted.
+`userSettings.useG1Credits: false` in Antigravity's shared configuration so
+purchased or promotional AI credits cannot be consumed after the subscription
+quota is exhausted.
 
 `prism usage` and `prism gemini usage` show the Antigravity five-hour and weekly
 subscription windows. Use `/usage` inside `agy` for the same live quota panel.
