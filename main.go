@@ -11,6 +11,6 @@ import (
 func main() {
 	if err := cli.Run(context.Background(), os.Args[1:], os.Stdout, os.Stderr, Version); err != nil {
 		fmt.Fprintln(os.Stderr, "prism:", err)
-		os.Exit(1)
+		os.Exit(cli.ExitCode(err))
 	}
 }

@@ -73,6 +73,13 @@ func Run(
 	if args[0] == "usage" {
 		return runCombinedUsage(ctx, args[1:], stdout)
 	}
+	if args[0] == "exec" {
+		if hasOption(args[1:], "--help") || hasOption(args[1:], "-h") {
+			printExecHelp(stdout)
+			return nil
+		}
+		return runExecCommand(ctx, args[1:], stdout, stderr)
+	}
 	if args[0] == "claude" {
 		return runClaudeCommand(ctx, args[1:], stdout, stderr)
 	}
@@ -788,6 +795,7 @@ func printHelp(output io.Writer) {
 	fmt.Fprintln(output, `Prism provider credential manager and client configuration tool
 
 Usage:
+  prism exec --api chat|completions|responses|messages [options]
   prism claude [--account <alias-or-id>] [claude arguments...]
   prism codex enable|disable|status
   prism cursor [--account <name-or-email>] [cursor arguments...]

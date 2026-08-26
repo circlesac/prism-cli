@@ -31,6 +31,46 @@ prism usage
 Each provider is fetched independently, so an unavailable login does not hide
 usage from the other providers.
 
+## Non-interactive API calls
+
+Use `prism exec` when a shell pipeline or CI job needs one request through
+Prism. The API type is explicit and the JSON request can come from stdin or a
+file:
+
+```sh
+cat request.json | prism exec --api chat --model gpt-4.1 --provider copilot
+prism exec --api responses --body request.json --output-format text
+```
+
+The supported API mappings are:
+
+| `--api` | Endpoint |
+| --- | --- |
+| `chat` | `/v1/chat/completions` |
+| `completions` | `/v1/completions` |
+| `responses` | `/v1/responses` |
+| `messages` | `/v1/messages` |
+
+Output is JSON by default. Use `--output-format text` for textual assistant
+output or `--output-format stream-json` for one JSON object per SSE event.
+`--json` is shorthand for the default JSON mode. `--model` overrides a model in
+the request body, and `--provider` is sent as Prism's routing hint.
+
+For headless CI, provide the normal Circles credential through the environment
+and keep it scoped to the command. For example, with a cvlt-backed reference:
+
+```dotenv
+CIRCLES_AUTH_TOKEN=vlt://github.com/example-org/example-repo/PRISM_CI_CIRCLES_KEY
+```
+
+```sh
+cvlt run --env-file=.cvlt.env -- prism exec --api responses --output-format json < request.json
+```
+
+The CLI never accepts credentials as command-line arguments or reads GitHub
+OIDC variables directly. See `prism exec --help` for all options and the
+documented exit-code classes.
+
 ## Cursor
 
 Install the official Cursor Agent without replacing an existing
