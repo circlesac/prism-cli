@@ -80,3 +80,69 @@ func TestCredentialLifecycleUsesPrismAPIWithoutLeakingSecretsInURL(t *testing.T)
 		t.Fatalf("usage = %#v, err = %v", usage, err)
 	}
 }
+
+func TestInferenceMapsAPIPathAndProviderHeader(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/messages" {
+			t.Errorf("path = %q", request.URL.Path)
+		}
+		if request.Header.Get("Authorization") != "Bearer test-token" {
+			t.Errorf("authorization = %q", request.Header.Get("Authorization"))
+		}
+		if request.Header.Get("X-Prism-Provider") != "anthropic" {
+			t.Errorf("provider = %q", request.Header.Get("X-Prism-Provider"))
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"content":[{"type":"text","text":"ok"}]}`))
+	}))
+	defer server.Close()
+
+	client := Client{BaseURL: server.URL, Token: "test-token", HTTPClient: server.Client()}
+	response, err := client.Inference(context.Background(), InferenceRequest{
+		API: "messages", Provider: "anthropic", Body: []byte(`{"model":"claude-test"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", response.StatusCode)
+	}
+}
+
+func TestInferencePathMapsEverySupportedAPI(t *testing.T) {
+	for apiName, want := range map[string]string{
+		"chat":        "/v1/chat/completions",
+		"completions": "/v1/completions",
+		"responses":   "/v1/responses",
+		"messages":    "/v1/messages",
+	} {
+		if got, ok := InferencePath(apiName); !ok || got != want {
+			t.Fatalf("InferencePath(%q) = %q, %v; want %q", apiName, got, ok, want)
+		}
+	}
+	if _, ok := InferencePath("unknown"); ok {
+		t.Fatal("unknown API was accepted")
+	}
+}
+
+func TestInferenceRejectsNonHTTPSAndClearsLegacyTotalTimeout(t *testing.T) {
+	client := Client{BaseURL: "http://example.com", Token: "test-token"}
+	if _, err := client.Inference(context.Background(), InferenceRequest{API: "chat", Body: []byte(`{}`)}); err == nil {
+		t.Fatal("HTTP endpoint was accepted")
+	}
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+	legacy := *server.Client()
+	legacy.Timeout = 1
+	client = Client{BaseURL: server.URL, Token: "test-token", HTTPClient: &legacy}
+	response, err := client.Inference(context.Background(), InferenceRequest{API: "chat", Body: []byte(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+}

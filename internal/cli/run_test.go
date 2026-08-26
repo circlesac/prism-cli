@@ -21,7 +21,7 @@ func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := stdout.String()
-	for _, command := range []string{"prism claude", "prism codex", "prism cursor", "prism usage", "chatgpt usage", "anthropic auth login", "opencode-go usage", "auth login", "auth list", "auth remove"} {
+	for _, command := range []string{"prism exec", "prism claude", "prism codex", "prism cursor", "prism usage", "chatgpt usage", "anthropic auth login", "opencode-go usage", "auth login", "auth list", "auth remove"} {
 		if !strings.Contains(output, command) {
 			t.Fatalf("help did not contain %q", command)
 		}
