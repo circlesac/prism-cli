@@ -21,7 +21,7 @@ func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := stdout.String()
-	for _, command := range []string{"prism exec", "prism claude", "prism codex", "prism cursor", "prism usage", "chatgpt usage", "anthropic auth login", "opencode-go usage", "auth login", "auth list", "auth remove"} {
+	for _, command := range []string{"prism exec", "prism claude", "prism codex", "prism cursor", "prism usage", "chatgpt usage", "anthropic auth login", "opencode-go usage", "auth import", "auth login", "auth list", "auth remove"} {
 		if !strings.Contains(output, command) {
 			t.Fatalf("help did not contain %q", command)
 		}
@@ -91,7 +91,10 @@ func TestCombinedUsageShowsEveryProvider(t *testing.T) {
 			Name: "cursor@example.com", Limits: []api.UsageLimit{{Name: "Cursor Models", Window: "monthly", UsedPercent: 5, RemainingPercent: 95}},
 		}}}, nil
 	}
-	fetchGeminiUsage = func(context.Context) (api.ProviderUsage, error) {
+	fetchGeminiUsage = func(_ context.Context, options commonOptions) (api.ProviderUsage, error) {
+		if options.profile != "work-admin" || !options.profileSet {
+			t.Fatalf("Gemini options = %+v", options)
+		}
 		return api.ProviderUsage{Provider: "gemini", Accounts: []api.UsageAccount{{Name: "Google Gemini subscription", Limits: []api.UsageLimit{{Name: "Gemini Models — Five Hour Limit Remaining", Window: "5h", RemainingPercent: 95}}}}}, nil
 	}
 
@@ -141,7 +144,7 @@ func TestCombinedUsageKeepsPartialResults(t *testing.T) {
 	fetchCursorUsage = func(context.Context, prismcursor.UsageOptions) (api.ProviderUsage, error) {
 		return api.ProviderUsage{}, errors.New("Cursor login unavailable")
 	}
-	fetchGeminiUsage = func(context.Context) (api.ProviderUsage, error) {
+	fetchGeminiUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
 		return api.ProviderUsage{}, errors.New("Gemini login unavailable")
 	}
 
@@ -185,7 +188,7 @@ func TestCombinedUsageFailsOnlyWhenEveryProviderFails(t *testing.T) {
 	fetchCursorUsage = func(context.Context, prismcursor.UsageOptions) (api.ProviderUsage, error) {
 		return api.ProviderUsage{}, errors.New("unavailable")
 	}
-	fetchGeminiUsage = func(context.Context) (api.ProviderUsage, error) {
+	fetchGeminiUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
 		return api.ProviderUsage{}, errors.New("unavailable")
 	}
 

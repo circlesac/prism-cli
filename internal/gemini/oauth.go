@@ -29,6 +29,8 @@ type Bundle struct {
 	Alias        string `json:"alias,omitempty"`
 	AccountID    string `json:"account_id,omitempty"`
 	ExpiresAt    int64  `json:"expires_at"`
+	AuthMethod   string `json:"auth_method,omitempty"`
+	UserAgent    string `json:"antigravity_user_agent,omitempty"`
 }
 
 type tokenResponse struct {
@@ -173,6 +175,7 @@ func (o OAuth) Login(ctx context.Context) (Bundle, error) {
 		Alias:        alias,
 		AccountID:    projectID,
 		ExpiresAt:    time.Now().Add(time.Duration(expiresIn) * time.Second).UnixMilli(),
+		AuthMethod:   "code-assist",
 	}, nil
 }
 

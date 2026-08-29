@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,11 +16,11 @@ import (
 	"github.com/circlesac/prism-cli/internal/api"
 )
 
-func TestGeminiDefaultsTo37FlashAndPreservesExplicitModel(t *testing.T) {
+func TestGeminiDefaultsTo37FlashLowAndPreservesExplicitModel(t *testing.T) {
 	if got := withDefaultGeminiModel([]string{"-p", "hello"}); !reflect.DeepEqual(got, []string{"--model", "gemini-3.7-flash-low", "-p", "hello"}) {
 		t.Fatalf("default args = %#v", got)
 	}
-	for _, args := range [][]string{{"--model", "gemini-3.1-pro-preview", "-p", "hard"}, {"-m", "gemini-3.1-pro-preview"}, {"--model=gemini-3.1-pro-preview"}} {
+	for _, args := range [][]string{{"--model", "gemini-3.1-pro-high", "-p", "hard"}, {"-m", "gemini-3.1-pro-high"}, {"--model=gemini-3.1-pro-high"}} {
 		if got := withDefaultGeminiModel(args); !reflect.DeepEqual(got, args) {
 			t.Fatalf("explicit model args = %#v", got)
 		}
@@ -33,10 +32,28 @@ func TestGeminiHelpDocumentsOfficialCLIAccountsAndModels(t *testing.T) {
 	if err := runGeminiCommand(context.Background(), []string{"--help"}, &output, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"Antigravity CLI", "subscription", "AI Studio API keys are intentionally unsupported", "gemini-3.7-flash-low", "gemini-3.1-pro-high"} {
+	for _, value := range []string{"official Gemini CLI", "auth import", "--account", "rotate automatically", "subscription", "AI Studio API keys", "gemini-3.7-flash-low", "gemini-3.1-pro-high"} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("help omitted %q: %s", value, output.String())
 		}
+	}
+}
+
+func TestFindGeminiCLIIgnoresAntigravityAndUsesGatewayCompatibleCLI(t *testing.T) {
+	directory := t.TempDir()
+	for _, name := range []string{"agy", "gemini"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", directory)
+
+	executable, err := findGeminiCLI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executable.path != filepath.Join(directory, "gemini") || len(executable.prefix) != 0 {
+		t.Fatalf("executable = %#v", executable)
 	}
 }
 
@@ -51,6 +68,36 @@ func TestGeminiAccountSelectionUsesSubscriptionAccounts(t *testing.T) {
 	account, err = selectGeminiAccount("work-admin", accounts)
 	if err != nil || account != "oauth-2" {
 		t.Fatalf("explicit = %q, error = %v", account, err)
+	}
+}
+
+func TestGeminiOptionsSelectProfileAndAccountWithoutPassingThemThrough(t *testing.T) {
+	options, account, passthrough, err := parseGeminiOptions([]string{
+		"--profile", "dev", "--account=work-admin", "-p", "hello",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !options.profileSet || options.profile != "dev" || account != "work-admin" {
+		t.Fatalf("options = %#v, account = %q", options, account)
+	}
+	if !reflect.DeepEqual(passthrough, []string{"-p", "hello"}) {
+		t.Fatalf("passthrough = %#v", passthrough)
+	}
+}
+
+func TestGeminiOptionsPreserveArgumentsAfterSeparator(t *testing.T) {
+	options, account, passthrough, err := parseGeminiOptions([]string{
+		"--profile=dev", "--account", "personal", "--", "--account", "prompt-value",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.profile != "dev" || account != "personal" {
+		t.Fatalf("options = %#v, account = %q", options, account)
+	}
+	if !reflect.DeepEqual(passthrough, []string{"--", "--account", "prompt-value"}) {
+		t.Fatalf("passthrough = %#v", passthrough)
 	}
 }
 
@@ -125,72 +172,5 @@ func TestRunGeminiUsesOfficialCLIWithGatewayEnvironment(t *testing.T) {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("output omitted %q: %s", value, output.String())
 		}
-	}
-}
-
-func TestAntigravityUsageParsesSubscriptionWindowsAndScrubsAPIKeys(t *testing.T) {
-	original := findGeminiCLIExecutable
-	originalConfig := antigravityConfigPath
-	defer func() {
-		findGeminiCLIExecutable = original
-		antigravityConfigPath = originalConfig
-	}()
-	directory := t.TempDir()
-	antigravityConfigPath = func() string { return filepath.Join(directory, "config.json") }
-	executable := filepath.Join(directory, "agy")
-	if err := os.WriteFile(executable, []byte("#!/bin/sh\nif [ -n \"$GEMINI_API_KEY$GOOGLE_API_KEY$GOOGLE_GEMINI_BASE_URL\" ]; then exit 3; fi\nprintf '%s' '{\"status\":\"SUCCESS\",\"command\":{\"data\":{\"groups\":[{\"name\":\"Gemini Models\",\"buckets\":[{\"name\":\"Five Hour Limit Remaining\",\"window\":\"5h\",\"remaining_fraction\":0.75,\"reset_time\":\"2026-08-25T13:00:00Z\"}]}]}}}'\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	findGeminiCLIExecutable = func() (geminiCLIExecutable, error) {
-		return geminiCLIExecutable{path: executable, direct: true}, nil
-	}
-	t.Setenv("GEMINI_API_KEY", "must-not-pass")
-	t.Setenv("GOOGLE_API_KEY", "must-not-pass")
-	t.Setenv("GOOGLE_GEMINI_BASE_URL", "must-not-pass")
-	usage, err := fetchAntigravityUsage(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usage.Provider != "gemini" || len(usage.Accounts) != 1 || len(usage.Accounts[0].Limits) != 1 {
-		t.Fatalf("usage = %#v", usage)
-	}
-	limit := usage.Accounts[0].Limits[0]
-	if limit.RemainingPercent != 75 || limit.UsedPercent != 25 || limit.Window != "5h" || limit.WindowSeconds == nil || *limit.WindowSeconds != 18000 {
-		t.Fatalf("limit = %#v", limit)
-	}
-}
-
-func TestRunAntigravityDisablesCreditOveragesBeforeStartingCLI(t *testing.T) {
-	original := antigravityConfigPath
-	defer func() { antigravityConfigPath = original }()
-	directory := t.TempDir()
-	path := filepath.Join(directory, "config.json")
-	antigravityConfigPath = func() string { return path }
-	if err := os.WriteFile(path, []byte("{\"userSettings\":{\"remoteControlHostname\":\"example-host\",\"useG1Credits\":true}}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	executable := filepath.Join(directory, "agy")
-	if err := os.WriteFile(executable, []byte("#!/bin/sh\ngrep -q '\"useG1Credits\": false' \"$PRISM_TEST_SETTINGS\" || exit 9\nprintf CREDIT_GUARD_OK\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PRISM_TEST_SETTINGS", path)
-	var output bytes.Buffer
-	if err := runAntigravity(context.Background(), geminiCLIExecutable{path: executable, direct: true}, nil, strings.NewReader(""), &output, io.Discard); err != nil {
-		t.Fatal(err)
-	}
-	if output.String() != "CREDIT_GUARD_OK" {
-		t.Fatalf("output = %q", output.String())
-	}
-	var settings map[string]any
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(contents, &settings); err != nil {
-		t.Fatal(err)
-	}
-	userSettings, ok := settings["userSettings"].(map[string]any)
-	if !ok || userSettings["useG1Credits"] != false || userSettings["remoteControlHostname"] != "example-host" {
-		t.Fatalf("settings = %#v", settings)
 	}
 }

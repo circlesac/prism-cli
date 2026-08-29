@@ -117,27 +117,30 @@ Because Cursor does not publish a standalone usage CLI contract, usage is a
 read-only best-effort integration and reports an explicit error when the login
 or quota response is unavailable.
 
-## Gemini subscription (Antigravity CLI)
+## Gemini subscription
 
-Sign in once with the official Antigravity CLI (`agy`) using the Google account
-that owns the Gemini subscription, then run it through Prism:
+Sign in to Antigravity with each Google subscription account and import the
+active login into Prism. Repeat the first two commands for every account, then
+run the official Gemini CLI through the shared pool:
 
 ```sh
-agy
+agy -p /usage --output-format json
+prism gemini auth import
+prism gemini auth list
 prism gemini usage
 prism gemini -p 'Reply with exactly GEMINI_OK.'
 ```
 
-`prism gemini` uses the signed-in `agy` profile directly. Prism never reads or
-passes `GEMINI_API_KEY`/`GOOGLE_API_KEY`, and AI Studio API-key authentication is
-intentionally unsupported because it can incur usage-based charges.
-Before every Gemini run and usage check, Prism also forces
-`userSettings.useG1Credits: false` in Antigravity's shared configuration so
-purchased or promotional AI credits cannot be consumed after the subscription
-quota is exhausted.
+Prism rotates across registered subscription accounts unless `--account`
+selects one:
 
-`prism usage` and `prism gemini usage` show the Antigravity five-hour and weekly
-subscription windows. Use `/usage` inside `agy` for the same live quota panel.
+```sh
+prism gemini --account work-admin -p 'Reply with exactly GEMINI_OK.'
+```
+
+AI Studio API keys are intentionally unsupported because they can incur
+usage-based charges. `prism usage` and `prism gemini usage` show every
+registered subscription account.
 
 The default model is `gemini-3.7-flash-low`. For harder software-engineering or
 multi-step tool-use tasks, select `gemini-3.1-pro-high` explicitly:
@@ -145,6 +148,10 @@ multi-step tool-use tasks, select `gemini-3.1-pro-high` explicitly:
 ```sh
 prism gemini --model gemini-3.1-pro-high -p 'Review this repository.'
 ```
+
+`prism gemini auth login` remains available for organization-managed Gemini
+Code Assist OAuth accounts. Imported Antigravity logins and Code Assist accounts
+are stored separately and selected by the same rotation mechanism.
 
 ## Anthropic
 
