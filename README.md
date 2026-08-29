@@ -71,6 +71,18 @@ The CLI never accepts credentials as command-line arguments or reads GitHub
 OIDC variables directly. See `prism exec --help` for all options and the
 documented exit-code classes.
 
+## Local runtime relay
+
+Container runtimes can reach Prism without mounting the host credential store:
+
+```sh
+PRISM_RELAY_TOKEN=<random-one-shot-token> prism relay claude --port 0
+PRISM_RELAY_TOKEN=<random-one-shot-token> prism relay codex --port 0
+PRISM_RELAY_TOKEN=<random-one-shot-token> prism relay gemini --port 0
+```
+
+The relay keeps the Prism credential and account selection in the host process. It accepts only the selected provider's API route and requires the one-shot token on every proxied request. Port `0` selects an available port. The relay listens on all host interfaces so a local container can reach it; callers must generate a fresh token of at least 32 characters and stop the relay with the container invocation.
+
 ## Cursor
 
 Install the official Cursor Agent without replacing an existing
