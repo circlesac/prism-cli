@@ -103,7 +103,7 @@ func Run(
 	commandArgs := args[2:]
 	if command == "auth" {
 		if len(args) < 3 {
-			return errors.New("unknown provider auth command; use login/add, list, or remove")
+			return errors.New("unknown provider auth command; use login/add/import, list, or remove")
 		}
 		command = args[2]
 		commandArgs = args[3:]
@@ -128,7 +128,7 @@ func Run(
 		if providerName == "opencode-go" {
 			usage, err = fetchOpenCodeGoUsage(ctx)
 		} else if providerName == "gemini" {
-			usage, err = fetchGeminiUsage(ctx)
+			usage, err = fetchGeminiUsage(ctx, options)
 		} else if providerName == "anthropic" {
 			usage, err = fetchAnthropicUsage(ctx, options)
 		} else if providerName == "copilot" {
@@ -151,6 +151,17 @@ func Run(
 	switch command {
 	case "login":
 		return loginProvider(ctx, providerName, client, stdout)
+	case "import":
+		fmt.Fprintln(stdout, "Importing the active Antigravity subscription login...")
+		bundle, err := (gemini.AntigravityImport{}).Import(ctx)
+		if err != nil {
+			return err
+		}
+		saved, err := client.Save(ctx, "gemini", "", bundle)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "Saved Gemini subscription %s (%s).\n", saved.Name, saved.ID)
 	case "add":
 		bundle, err := readProviderCredential(providerName, options, os.Stdin, stderr)
 		if err != nil {
@@ -238,7 +249,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 		cursorResults <- usageResult{usage: usage, err: fetchErr}
 	}()
 	go func() {
-		usage, fetchErr := fetchGeminiUsage(ctx)
+		usage, fetchErr := fetchGeminiUsage(ctx, options)
 		geminiResults <- usageResult{usage: usage, err: fetchErr}
 	}()
 
@@ -297,6 +308,16 @@ func validateCommand(provider string, command string, positionals []string, opti
 		if options.name != "" || options.providerAccountID != "" || options.ownerID != "" {
 			return errors.New("OAuth account identity is determined from the provider callback")
 		}
+	case "import":
+		if provider != "gemini" {
+			return fmt.Errorf("%s does not support 'auth import'", provider)
+		}
+		if len(positionals) != 0 {
+			return fmt.Errorf("unexpected argument %q", positionals[0])
+		}
+		if options.name != "" || options.providerAccountID != "" || options.ownerID != "" {
+			return errors.New("imported account identity is determined from the Antigravity login")
+		}
 	case "add":
 		if provider == "chatgpt" || provider == "copilot" || provider == "gemini" {
 			return fmt.Errorf("%s uses 'auth login', not 'auth add'", provider)
@@ -316,7 +337,7 @@ func validateCommand(provider string, command string, positionals []string, opti
 			return fmt.Errorf("usage: prism %s auth remove <credential-id> [--profile <name>]", provider)
 		}
 	default:
-		return errors.New("unknown provider auth command; use login/add, list, or remove")
+		return errors.New("unknown provider auth command; use login/add/import, list, or remove")
 	}
 	return nil
 }
@@ -808,6 +829,7 @@ Usage:
   prism anthropic auth login [--profile <name>]
   prism claude login [--profile <name>]
   prism copilot auth login [--profile <name>]
+  prism gemini auth import [--profile <name>]
   prism gemini auth login [--profile <name>]
   prism <provider> auth add [--name <name>] [provider options]
   prism <provider> auth list [--profile <name>]
@@ -823,6 +845,17 @@ Run 'crcl login' before using Prism.`)
 }
 
 func printProviderAuthHelp(output io.Writer, provider string) {
+	if provider == "gemini" {
+		fmt.Fprintln(output, `Usage:
+  prism gemini auth import [--profile <name>]
+  prism gemini auth login [--profile <name>]
+  prism gemini auth list [--profile <name>]
+  prism gemini auth remove <credential-id> [--profile <name>]
+
+import copies the active Antigravity subscription login into Prism. login adds
+a Gemini Code Assist OAuth account.`)
+		return
+	}
 	if provider == "chatgpt" || provider == "anthropic" || provider == "copilot" || provider == "gemini" {
 		fmt.Fprintf(output, `Usage:
   prism %s auth login [--profile <name>]
