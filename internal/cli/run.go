@@ -80,6 +80,9 @@ func Run(
 		}
 		return runExecCommand(ctx, args[1:], stdout, stderr)
 	}
+	if args[0] == "relay" {
+		return runRelayCommand(ctx, args[1:], stdout, stderr)
+	}
 	if args[0] == "claude" {
 		return runClaudeCommand(ctx, args[1:], stdout, stderr)
 	}
@@ -817,6 +820,7 @@ func printHelp(output io.Writer) {
 
 Usage:
   prism exec --api chat|completions|responses|messages [options]
+  prism relay claude|codex|gemini --port <port> [--profile <name>]
   prism claude [--account <alias-or-id>] [claude arguments...]
   prism codex enable|disable|status
   prism cursor [--account <name-or-email>] [cursor arguments...]
