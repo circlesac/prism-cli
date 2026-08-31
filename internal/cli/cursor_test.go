@@ -3,8 +3,11 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -162,9 +165,66 @@ func TestCursorHelpDocumentsIsolatedInstallAndUsage(t *testing.T) {
 	if err := runCursorCommand(context.Background(), []string{"help"}, &output, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"prism cursor install|update", "prism cursor usage", "without replacing ~/.local/bin/agent", "balanced rotation", "auth import"} {
+	for _, value := range []string{"prism cursor install|update", "prism cursor usage", "without replacing ~/.local/bin/agent", "balanced rotation", "auth import", "auth sync"} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("help did not contain %q: %s", value, output.String())
 		}
+	}
+}
+
+func TestCursorAuthSyncUploadsTheSelectedSubscriptionWithoutLaunchingAgent(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", root)
+	directory := filepath.Join(root, "prism", "cursor", "accounts", "person@example.com")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "auth.json"), []byte(`{"accessToken":"cursor-subscription-token"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "cli-config.json"), []byte(`{"authInfo":{"email":"person@example.com"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/credentials/cursor" {
+			http.NotFound(response, request)
+			return
+		}
+		var body struct {
+			Name       string         `json:"name"`
+			Credential map[string]any `json:"credential"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Name != "person@example.com" || body.Credential["access_token"] != "cursor-subscription-token" || body.Credential["client_version"] != "cli-test" {
+			t.Fatalf("body = %#v", body)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"id":"credential-id","provider":"cursor","name":"person@example.com"}`))
+	}))
+	defer server.Close()
+
+	originalClient := cursorPrismClient
+	originalVersion := cursorClientVersion
+	originalExecutable := cursorAgentExecutable
+	defer func() {
+		cursorPrismClient = originalClient
+		cursorClientVersion = originalVersion
+		cursorAgentExecutable = originalExecutable
+	}()
+	cursorPrismClient = func(context.Context, commonOptions) (api.Client, error) {
+		return api.Client{BaseURL: server.URL, Token: "circles-token", HTTPClient: server.Client()}, nil
+	}
+	cursorClientVersion = func() string { return "cli-test" }
+	cursorAgentExecutable = func() (string, error) { return "", errors.New("Cursor Agent must not be launched") }
+
+	var output bytes.Buffer
+	if err := runCursorCommand(context.Background(), []string{"auth", "sync", "--account", "person@example.com", "--profile", "dev"}, &output, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "Synced Cursor subscription person@example.com (credential-id).") {
+		t.Fatalf("output = %q", output.String())
 	}
 }

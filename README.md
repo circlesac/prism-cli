@@ -78,7 +78,6 @@ Container runtimes can reach Prism without mounting the host credential store:
 ```sh
 PRISM_RELAY_TOKEN=<random-one-shot-token> prism relay claude --port 0
 PRISM_RELAY_TOKEN=<random-one-shot-token> prism relay codex --port 0
-PRISM_RELAY_TOKEN=<random-one-shot-token> prism relay gemini --port 0
 ```
 
 The relay keeps the Prism credential and account selection in the host process. It accepts only the selected provider's API route and requires the one-shot token on every proxied request. Port `0` selects an available port. The relay listens on all host interfaces so a local container can reach it; callers must generate a fresh token of at least 32 characters and stop the relay with the container invocation.
@@ -123,47 +122,46 @@ login that was active before this feature, run:
 prism cursor auth import
 ```
 
+Register one of those local subscriptions with Prism's OpenAI-compatible API
+without putting Cursor Agent in the inference path:
+
+```sh
+prism cursor auth sync --account work-admin
+```
+
+For `glm-5.2`, Prism keeps an existing OpenCode Go subscription first, then
+falls back to Cursor's `glm-5.2-high`, `gpt-5.6-luna`, and the metered Vercel
+provider in that order. An OpenCode Go 401, 402, or 403 response records a
+24-hour provider cooldown in Prism KV; 429 uses its retry window, capped at 24
+hours. Later Worker isolates therefore skip the broken subscription instead of
+probing it on every request. The admin cooldown clear endpoint makes an
+intentionally recovered subscription eligible immediately.
+
 Each login remains in an isolated profile supported by the official Cursor
-Agent, and Prism never prints its token.
+Agent. Sync stores the credential in Circles Vault, and Prism never prints its
+token.
 Because Cursor does not publish a standalone usage CLI contract, usage is a
 read-only best-effort integration and reports an explicit error when the login
 or quota response is unavailable.
 
 ## Gemini subscription
 
-Sign in to Antigravity with each Google subscription account and import the
-active login into Prism. Repeat the first two commands for every account, then
-run the official Gemini CLI through the shared pool:
+`prism gemini` runs the installed official Antigravity CLI while keeping the Prism command surface used for the other subscription-backed agents. Antigravity retains its own Google OAuth session; Prism does not copy or proxy those tokens:
 
 ```sh
-agy -p /usage --output-format json
-prism gemini auth import
-prism gemini auth list
 prism gemini usage
 prism gemini -p 'Reply with exactly GEMINI_OK.'
 ```
 
-Prism rotates across registered subscription accounts unless `--account`
-selects one:
+Before each run Prism removes common API-billing environment variables and persistently sets `useG1Credits=false` in Antigravity's shared configuration. If that safety setting cannot be written, Prism fails before launching agy. This disables AI Credit fallback without copying or changing agy's signed-in Google identity. `prism usage` and `prism gemini usage` read the live Antigravity quota through the same official CLI.
 
-```sh
-prism gemini --account work-admin -p 'Reply with exactly GEMINI_OK.'
-```
-
-AI Studio API keys are intentionally unsupported because they can incur
-usage-based charges. `prism usage` and `prism gemini usage` show every
-registered subscription account.
-
-The default model is `gemini-3.7-flash-low`. For harder software-engineering or
-multi-step tool-use tasks, select `gemini-3.1-pro-high` explicitly:
+The default model is `gemini-3.7-flash-low`. For harder software-engineering or multi-step tool-use tasks, select `gemini-3.1-pro-high` explicitly:
 
 ```sh
 prism gemini --model gemini-3.1-pro-high -p 'Review this repository.'
 ```
 
-`prism gemini auth login` remains available for organization-managed Gemini
-Code Assist OAuth accounts. Imported Antigravity logins and Code Assist accounts
-are stored separately and selected by the same rotation mechanism.
+Antigravity CLI must be installed on `PATH`; Prism invokes it internally and keeps `prism gemini` as the user-facing command. When no local session exists, the first `prism gemini` run starts Antigravity's official Google sign-in flow.
 
 ## Anthropic
 

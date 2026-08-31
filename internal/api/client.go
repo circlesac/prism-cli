@@ -56,7 +56,7 @@ type ProviderUsage struct {
 }
 
 var providers = map[string]struct{}{
-	"chatgpt": {}, "anthropic": {}, "copilot": {}, "gemini": {},
+	"chatgpt": {}, "anthropic": {}, "copilot": {}, "gemini": {}, "cursor": {},
 	"groq": {}, "mistral": {}, "deepseek": {}, "opencode-go": {},
 	"cloudflare": {}, "vercel": {}, "gemini-app": {},
 }

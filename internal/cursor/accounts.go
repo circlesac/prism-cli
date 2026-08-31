@@ -32,6 +32,22 @@ func AccountsDirectory() (string, error) {
 	return filepath.Join(root, "prism", "cursor", "accounts"), nil
 }
 
+func ClientVersion() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	target, err := filepath.EvalSymlinks(filepath.Join(home, ".local", "bin", "cursor-agent"))
+	if err != nil {
+		return ""
+	}
+	version := filepath.Base(filepath.Dir(target))
+	if !accountNamePattern.MatchString(version) {
+		return ""
+	}
+	return "cli-" + version
+}
+
 func ValidateAccountName(name string) error {
 	if !accountNamePattern.MatchString(name) {
 		return errors.New("Cursor account name must use only letters, numbers, '.', '_', '@', '+', or '-'")

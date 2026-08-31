@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,18 +45,7 @@ func runRelayCommand(ctx context.Context, args []string, stdout io.Writer, stder
 	if err != nil {
 		return err
 	}
-	account := ""
-	if provider == "gemini" {
-		accounts, listErr := client.List(ctx, "gemini")
-		if listErr != nil {
-			return listErr
-		}
-		account, err = selectGeminiAccount("", accounts)
-		if err != nil {
-			return err
-		}
-	}
-	relay, err := startProviderRelay(client.BaseURL, client.Token, provider, account, token, port, stderr)
+	relay, err := startProviderRelay(client.BaseURL, client.Token, provider, "", token, port, stderr)
 	if err != nil {
 		return err
 	}
@@ -133,8 +121,8 @@ func parseRelayOptions(args []string) (string, int, commonOptions, bool, error) 
 			return "", 0, commonOptions{}, false, fmt.Errorf("unexpected relay argument %q", argument)
 		}
 	}
-	if provider != "claude" && provider != "codex" && provider != "gemini" {
-		return "", 0, commonOptions{}, false, errors.New("relay provider must be claude, codex, or gemini")
+	if provider != "claude" && provider != "codex" {
+		return "", 0, commonOptions{}, false, errors.New("relay provider must be claude or codex")
 	}
 	if port < 0 {
 		return "", 0, commonOptions{}, false, errors.New("relay requires --port")
@@ -142,7 +130,7 @@ func parseRelayOptions(args []string) (string, int, commonOptions, bool, error) 
 	return provider, port, options, false, nil
 }
 
-func startProviderRelay(prismURL string, prismCredential string, provider string, account string, localToken string, port int, stderr io.Writer) (*providerRelay, error) {
+func startProviderRelay(prismURL string, prismCredential string, provider string, _ string, localToken string, port int, stderr io.Writer) (*providerRelay, error) {
 	target, err := url.Parse(prismURL)
 	if err != nil || (target.Scheme != "https" && target.Scheme != "http") || target.Host == "" {
 		return nil, errors.New("Prism URL is invalid")
@@ -153,11 +141,8 @@ func startProviderRelay(prismURL string, prismCredential string, provider string
 	if len(localToken) < 32 || strings.ContainsAny(localToken, " \t\r\n") {
 		return nil, errors.New("Prism relay credential is invalid")
 	}
-	if provider != "claude" && provider != "codex" && provider != "gemini" {
+	if provider != "claude" && provider != "codex" {
 		return nil, errors.New("Prism relay provider is invalid")
-	}
-	if provider == "gemini" && strings.TrimSpace(account) == "" {
-		return nil, errors.New("Prism Gemini relay requires an account")
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
@@ -170,11 +155,7 @@ func startProviderRelay(prismURL string, prismCredential string, provider string
 		request.Header.Del("X-Goog-Api-Key")
 		request.Header.Del("X-Prism-Relay")
 		request.Header.Del("X-Prism-Anthropic-Account")
-		request.Header.Del("X-Prism-Gemini-Account")
 		request.Header.Set("Authorization", "Bearer "+prismCredential)
-		if provider == "gemini" {
-			request.Header.Set("X-Prism-Gemini-Account", "b64:"+base64.RawURLEncoding.EncodeToString([]byte(account)))
-		}
 	}
 	proxy.ErrorLog = log.New(stderr, "prism relay: ", 0)
 	proxy.ErrorHandler = func(response http.ResponseWriter, _ *http.Request, _ error) {
@@ -220,8 +201,6 @@ func relayPathAllowed(provider string, path string) bool {
 		return path == "/v1/messages" || strings.HasPrefix(path, "/v1/messages/")
 	case "codex":
 		return path == "/v1/responses" || strings.HasPrefix(path, "/v1/responses/")
-	case "gemini":
-		return strings.HasPrefix(path, "/v1beta/")
 	default:
 		return false
 	}
@@ -239,7 +218,7 @@ func (relay *providerRelay) close() {
 
 func printRelayHelp(output io.Writer) {
 	fmt.Fprintln(output, `Usage:
-  prism relay claude|codex|gemini --port <port> [--profile <name>]
+  prism relay claude|codex --port <port> [--profile <name>]
 
 Starts a short-lived authenticated provider relay for a local runtime adapter.
 The caller must supply a random PRISM_RELAY_TOKEN of at least 32 characters.

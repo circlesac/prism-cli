@@ -51,39 +51,12 @@ func TestProviderRelayAuthenticatesLocallyAndInjectsPrismCredential(t *testing.T
 	}
 }
 
-func TestGeminiProviderRelayPinsSelectedAccount(t *testing.T) {
-	var selected string
-	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		selected = request.Header.Get("X-Prism-Gemini-Account")
-		response.WriteHeader(http.StatusNoContent)
-	}))
-	defer upstream.Close()
-
-	relay, err := startProviderRelay(upstream.URL, "circles-secret", "gemini", "account-1", strings.Repeat("b", 32), 0, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer relay.close()
-	go relay.server.Serve(relay.listener)
-
-	request, _ := http.NewRequest(http.MethodPost, "http://"+relay.listener.Addr().String()+"/v1beta/models/test:generateContent", strings.NewReader("{}"))
-	request.Header.Set("Authorization", "Bearer "+strings.Repeat("b", 32))
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response.Body.Close()
-	if selected != "b64:YWNjb3VudC0x" {
-		t.Fatalf("selected account = %q", selected)
-	}
-}
-
 func TestParseRelayOptions(t *testing.T) {
-	provider, port, options, help, err := parseRelayOptions([]string{"gemini", "--port", "0", "--profile", "work"})
-	if err != nil || help || provider != "gemini" || port != 0 || options.profile != "work" || !options.profileSet {
+	provider, port, options, help, err := parseRelayOptions([]string{"claude", "--port", "0", "--profile", "work"})
+	if err != nil || help || provider != "claude" || port != 0 || options.profile != "work" || !options.profileSet {
 		t.Fatalf("parsed = provider=%q port=%d options=%+v help=%t err=%v", provider, port, options, help, err)
 	}
-	for _, args := range [][]string{{"claude"}, {"unknown", "--port", "0"}, {"codex", "--port", "-1"}} {
+	for _, args := range [][]string{{"claude"}, {"gemini", "--port", "0"}, {"unknown", "--port", "0"}, {"codex", "--port", "-1"}} {
 		if _, _, _, _, err := parseRelayOptions(args); err == nil {
 			t.Fatalf("expected error for %#v", args)
 		}
@@ -128,8 +101,6 @@ func TestRelayPathAllowed(t *testing.T) {
 		{provider: "claude", path: "/v1/responses", want: false},
 		{provider: "codex", path: "/v1/responses", want: true},
 		{provider: "codex", path: "/v1/responses/compact", want: true},
-		{provider: "gemini", path: "/v1beta/models/example:generateContent", want: true},
-		{provider: "gemini", path: "/v1/messages", want: false},
 	}
 	for _, test := range tests {
 		if got := relayPathAllowed(test.provider, test.path); got != test.want {

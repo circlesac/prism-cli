@@ -17,6 +17,8 @@ import (
 var installCursorAgent = prismcursor.Install
 var fetchCursorUsage = prismcursor.FetchUsage
 var cursorAgentExecutable = findCursorAgent
+var cursorPrismClient = prismClient
+var cursorClientVersion = prismcursor.ClientVersion
 
 func runCursorCommand(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) == 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
@@ -145,7 +147,7 @@ func loginCursorAccount(ctx context.Context, name string, stdin io.Reader, stdou
 
 func runCursorAuthCommand(ctx context.Context, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: prism cursor auth list|import|remove")
+		return errors.New("usage: prism cursor auth list|import|sync|remove")
 	}
 	switch args[0] {
 	case "list":
@@ -176,6 +178,44 @@ func runCursorAuthCommand(ctx context.Context, args []string, stdout io.Writer) 
 		}
 		fmt.Fprintf(stdout, "Imported Cursor account %s.\n", account.Name)
 		return nil
+	case "sync":
+		selector, options, err := parseCursorSyncOptions(args[1:])
+		if err != nil {
+			return err
+		}
+		accounts, err := prismcursor.ListAccounts()
+		if err != nil {
+			return err
+		}
+		if len(accounts) == 0 {
+			return errors.New("no Cursor accounts are registered; run 'prism cursor auth import' first")
+		}
+		selected, err := selectCursorAccount(selector, accounts)
+		if err != nil {
+			return err
+		}
+		token, err := prismcursor.TokenFromDirectory(selected.Directory)
+		if err != nil {
+			return err
+		}
+		credential := map[string]any{"access_token": token}
+		if version := cursorClientVersion(); version != "" {
+			credential["client_version"] = version
+		}
+		client, err := cursorPrismClient(ctx, options)
+		if err != nil {
+			return err
+		}
+		name := selected.Email
+		if name == "" {
+			name = selected.Name
+		}
+		saved, err := client.Save(ctx, "cursor", name, credential)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "Synced Cursor subscription %s (%s).\n", saved.Name, saved.ID)
+		return nil
 	case "remove":
 		if len(args) != 2 {
 			return errors.New("usage: prism cursor auth remove <name-or-email>")
@@ -186,8 +226,44 @@ func runCursorAuthCommand(ctx context.Context, args []string, stdout io.Writer) 
 		fmt.Fprintf(stdout, "Removed Cursor account %s.\n", args[1])
 		return nil
 	default:
-		return errors.New("usage: prism cursor auth list|import|remove")
+		return errors.New("usage: prism cursor auth list|import|sync|remove")
 	}
+}
+
+func parseCursorSyncOptions(args []string) (string, commonOptions, error) {
+	selector := ""
+	var options commonOptions
+	for index := 0; index < len(args); index++ {
+		switch argument := args[index]; {
+		case argument == "--account":
+			index++
+			if index >= len(args) || strings.TrimSpace(args[index]) == "" {
+				return "", commonOptions{}, errors.New("--account requires a value")
+			}
+			selector = strings.TrimSpace(args[index])
+		case strings.HasPrefix(argument, "--account="):
+			selector = strings.TrimSpace(strings.TrimPrefix(argument, "--account="))
+			if selector == "" {
+				return "", commonOptions{}, errors.New("--account requires a value")
+			}
+		case argument == "--profile":
+			index++
+			if index >= len(args) || strings.TrimSpace(args[index]) == "" {
+				return "", commonOptions{}, errors.New("--profile requires a value")
+			}
+			options.profile = strings.TrimSpace(args[index])
+			options.profileSet = true
+		case strings.HasPrefix(argument, "--profile="):
+			options.profile = strings.TrimSpace(strings.TrimPrefix(argument, "--profile="))
+			if options.profile == "" {
+				return "", commonOptions{}, errors.New("--profile requires a value")
+			}
+			options.profileSet = true
+		default:
+			return "", commonOptions{}, fmt.Errorf("unexpected argument %q", argument)
+		}
+	}
+	return selector, options, nil
 }
 
 func parseCursorName(args []string) (string, error) {
@@ -318,6 +394,7 @@ func printCursorHelp(output io.Writer) {
   prism cursor install|update|upgrade
   prism cursor login [--name <alias>]
   prism cursor auth import [--name <alias>]
+  prism cursor auth sync [--account <name-or-email>] [--profile <name>]
   prism cursor auth list|remove <name-or-email>
   prism cursor status
   prism cursor models
@@ -328,5 +405,6 @@ Install and run the official Cursor Agent without replacing ~/.local/bin/agent.
 Each login stays in an isolated official Cursor file credential store. Without
 --account, registered accounts are selected in balanced rotation. Use auth
 import once to migrate the currently active singleton Cursor login.
+Use auth sync to register that subscription with Prism's direct API provider.
 Run 'cursor-agent --help' for Cursor Agent options.`)
 }

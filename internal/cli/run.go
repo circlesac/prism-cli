@@ -18,7 +18,6 @@ import (
 	"github.com/circlesac/prism-cli/internal/api"
 	"github.com/circlesac/prism-cli/internal/chatgpt"
 	"github.com/circlesac/prism-cli/internal/copilot"
-	"github.com/circlesac/prism-cli/internal/gemini"
 	"github.com/circlesac/prism-cli/internal/opencodego"
 	"github.com/circlesac/prism-cli/internal/secret"
 )
@@ -106,7 +105,7 @@ func Run(
 	commandArgs := args[2:]
 	if command == "auth" {
 		if len(args) < 3 {
-			return errors.New("unknown provider auth command; use login/add/import, list, or remove")
+			return errors.New("unknown provider auth command; use login/add, list, or remove")
 		}
 		command = args[2]
 		commandArgs = args[3:]
@@ -131,7 +130,7 @@ func Run(
 		if providerName == "opencode-go" {
 			usage, err = fetchOpenCodeGoUsage(ctx)
 		} else if providerName == "gemini" {
-			usage, err = fetchGeminiUsage(ctx, options)
+			usage, err = fetchGeminiUsage(ctx)
 		} else if providerName == "anthropic" {
 			usage, err = fetchAnthropicUsage(ctx, options)
 		} else if providerName == "copilot" {
@@ -154,17 +153,6 @@ func Run(
 	switch command {
 	case "login":
 		return loginProvider(ctx, providerName, client, stdout)
-	case "import":
-		fmt.Fprintln(stdout, "Importing the active Antigravity subscription login...")
-		bundle, err := (gemini.AntigravityImport{}).Import(ctx)
-		if err != nil {
-			return err
-		}
-		saved, err := client.Save(ctx, "gemini", "", bundle)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(stdout, "Saved Gemini subscription %s (%s).\n", saved.Name, saved.ID)
 	case "add":
 		bundle, err := readProviderCredential(providerName, options, os.Stdin, stderr)
 		if err != nil {
@@ -252,7 +240,7 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 		cursorResults <- usageResult{usage: usage, err: fetchErr}
 	}()
 	go func() {
-		usage, fetchErr := fetchGeminiUsage(ctx, options)
+		usage, fetchErr := fetchGeminiUsage(ctx)
 		geminiResults <- usageResult{usage: usage, err: fetchErr}
 	}()
 
@@ -311,16 +299,6 @@ func validateCommand(provider string, command string, positionals []string, opti
 		if options.name != "" || options.providerAccountID != "" || options.ownerID != "" {
 			return errors.New("OAuth account identity is determined from the provider callback")
 		}
-	case "import":
-		if provider != "gemini" {
-			return fmt.Errorf("%s does not support 'auth import'", provider)
-		}
-		if len(positionals) != 0 {
-			return fmt.Errorf("unexpected argument %q", positionals[0])
-		}
-		if options.name != "" || options.providerAccountID != "" || options.ownerID != "" {
-			return errors.New("imported account identity is determined from the Antigravity login")
-		}
 	case "add":
 		if provider == "chatgpt" || provider == "copilot" || provider == "gemini" {
 			return fmt.Errorf("%s uses 'auth login', not 'auth add'", provider)
@@ -340,7 +318,7 @@ func validateCommand(provider string, command string, positionals []string, opti
 			return fmt.Errorf("usage: prism %s auth remove <credential-id> [--profile <name>]", provider)
 		}
 	default:
-		return errors.New("unknown provider auth command; use login/add/import, list, or remove")
+		return errors.New("unknown provider auth command; use login/add, list, or remove")
 	}
 	return nil
 }
@@ -630,17 +608,6 @@ func loginProvider(ctx context.Context, provider string, client api.Client, outp
 			return err
 		}
 		fmt.Fprintf(output, "Saved Copilot credential %s (%s).\n", saved.Name, saved.ID)
-	case "gemini":
-		fmt.Fprintln(output, "Opening a browser for Gemini Code Assist login...")
-		bundle, err := (gemini.OAuth{}).Login(ctx)
-		if err != nil {
-			return err
-		}
-		saved, err := client.Save(ctx, "gemini", "", bundle)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(output, "Saved Gemini credential %s (%s).\n", saved.Name, saved.ID)
 	case "anthropic":
 		fmt.Fprintln(output, "Opening a browser for Anthropic login...")
 		grant, err := (anthropic.OAuth{}).Login(ctx)
@@ -820,11 +787,10 @@ func printHelp(output io.Writer) {
 
 Usage:
   prism exec --api chat|completions|responses|messages [options]
-  prism relay claude|codex|gemini --port <port> [--profile <name>]
+  prism relay claude|codex --port <port> [--profile <name>]
   prism claude [--account <alias-or-id>] [claude arguments...]
   prism codex enable|disable|status
   prism cursor [--account <name-or-email>] [cursor arguments...]
-  prism gemini [--account <alias-or-id>] [gemini arguments...]
   prism usage [--profile <name>]
   prism chatgpt usage [--profile <name>]
   prism copilot usage [--profile <name>]
@@ -833,8 +799,7 @@ Usage:
   prism anthropic auth login [--profile <name>]
   prism claude login [--profile <name>]
   prism copilot auth login [--profile <name>]
-  prism gemini auth import [--profile <name>]
-  prism gemini auth login [--profile <name>]
+  prism gemini [Antigravity CLI arguments...]
   prism <provider> auth add [--name <name>] [provider options]
   prism <provider> auth list [--profile <name>]
   prism <provider> auth remove <credential-id> [--profile <name>]
@@ -850,14 +815,9 @@ Run 'crcl login' before using Prism.`)
 
 func printProviderAuthHelp(output io.Writer, provider string) {
 	if provider == "gemini" {
-		fmt.Fprintln(output, `Usage:
-  prism gemini auth import [--profile <name>]
-  prism gemini auth login [--profile <name>]
-  prism gemini auth list [--profile <name>]
-  prism gemini auth remove <credential-id> [--profile <name>]
-
-import copies the active Antigravity subscription login into Prism. login adds
-a Gemini Code Assist OAuth account.`)
+		fmt.Fprintln(output, `Antigravity CLI signs in automatically on the first
+'prism gemini' run. It has no auth subcommand, and Prism does not import or
+proxy Antigravity OAuth credentials.`)
 		return
 	}
 	if provider == "chatgpt" || provider == "anthropic" || provider == "copilot" || provider == "gemini" {
