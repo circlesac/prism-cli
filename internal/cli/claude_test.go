@@ -113,7 +113,7 @@ func main() {
 	}
 }
 
-func TestClaudeEnvironmentPreservesClaudeLoginModeWithoutTokenInjection(t *testing.T) {
+func TestClaudeEnvironmentUsesPrismBearerTokenWithoutLocalLogin(t *testing.T) {
 	environment := claudeEnvironment([]string{
 		"PATH=/usr/bin",
 		"ANTHROPIC_BASE_URL=https://api.anthropic.com",
@@ -128,7 +128,7 @@ func TestClaudeEnvironmentPreservesClaudeLoginModeWithoutTokenInjection(t *testi
 		"ANTHROPIC_VERTEX_PROJECT_ID=example-project",
 		"CLOUD_ML_REGION=us-east5",
 		"CLAUDE_CODE_OAUTH_TOKEN=existing-login-token",
-	}, "http://127.0.0.1:12345", "X-Prism-Claude-Bridge-abc: 123456")
+	}, "http://127.0.0.1:12345", "X-Prism-Claude-Bridge-abc: 123456", "prism-secret")
 	joined := strings.Join(environment, "\n")
 	for _, unwanted := range []string{
 		"api.anthropic.com",
@@ -142,6 +142,7 @@ func TestClaudeEnvironmentPreservesClaudeLoginModeWithoutTokenInjection(t *testi
 		"example-project",
 		"us-east5",
 		"_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=0",
+		"existing-login-token",
 	} {
 		if strings.Contains(joined, unwanted) {
 			t.Fatalf("environment retained %q: %s", unwanted, joined)
@@ -149,17 +150,13 @@ func TestClaudeEnvironmentPreservesClaudeLoginModeWithoutTokenInjection(t *testi
 	}
 	for _, wanted := range []string{
 		"PATH=/usr/bin",
-		"CLAUDE_CODE_OAUTH_TOKEN=existing-login-token",
 		"ANTHROPIC_BASE_URL=http://127.0.0.1:12345",
 		"ANTHROPIC_CUSTOM_HEADERS=X-Prism-Claude-Bridge-abc: 123456",
-		"_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=1",
+		"ANTHROPIC_AUTH_TOKEN=prism-secret",
 	} {
 		if !strings.Contains(joined, wanted) {
 			t.Fatalf("environment omitted %q: %s", wanted, joined)
 		}
-	}
-	if strings.Contains(joined, "ANTHROPIC_AUTH_TOKEN=") {
-		t.Fatalf("environment still contains ANTHROPIC_AUTH_TOKEN: %s", joined)
 	}
 	if strings.Contains(joined, "ANTHROPIC_API_KEY=") {
 		t.Fatalf("environment still contains ANTHROPIC_API_KEY: %s", joined)

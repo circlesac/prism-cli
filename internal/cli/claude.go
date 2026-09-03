@@ -85,6 +85,7 @@ func runClaude(
 		os.Environ(),
 		bridge.url,
 		bridge.headerName+": "+bridge.headerValue,
+		prismCredential,
 	)
 	if err := command.Run(); err != nil {
 		var exitError *exec.ExitError
@@ -168,8 +169,8 @@ func (bridge *claudeBridge) close() {
 	_ = bridge.server.Shutdown(ctx)
 }
 
-func claudeEnvironment(environment []string, baseURL string, customHeaders string) []string {
-	filtered := make([]string, 0, len(environment)+2)
+func claudeEnvironment(environment []string, baseURL string, customHeaders string, prismCredential string) []string {
+	filtered := make([]string, 0, len(environment)+3)
 	for _, entry := range environment {
 		name, _, _ := strings.Cut(entry, "=")
 		switch strings.ToUpper(name) {
@@ -177,6 +178,7 @@ func claudeEnvironment(environment []string, baseURL string, customHeaders strin
 			"ANTHROPIC_CUSTOM_HEADERS",
 			"ANTHROPIC_AUTH_TOKEN",
 			"ANTHROPIC_API_KEY",
+			"CLAUDE_CODE_OAUTH_TOKEN",
 			"CLAUDE_CODE_USE_BEDROCK",
 			"CLAUDE_CODE_USE_VERTEX",
 			"ANTHROPIC_BEDROCK_BASE_URL",
@@ -191,7 +193,7 @@ func claudeEnvironment(environment []string, baseURL string, customHeaders strin
 	return append(filtered,
 		"ANTHROPIC_BASE_URL="+baseURL,
 		"ANTHROPIC_CUSTOM_HEADERS="+customHeaders,
-		"_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=1",
+		"ANTHROPIC_AUTH_TOKEN="+prismCredential,
 	)
 }
 
