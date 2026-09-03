@@ -3,16 +3,12 @@ package cli
 import (
 	"bytes"
 	"context"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
-	"sync/atomic"
 	"testing"
 )
 
@@ -163,235 +159,14 @@ func TestClaudeEnvironmentUsesPrismBearerTokenWithoutLocalLogin(t *testing.T) {
 	}
 }
 
-func TestClaudeBridgeAuthenticatesLocallyAndForwardsTheCirclesCredential(t *testing.T) {
-	var requests atomic.Int32
-	var seenIncomingOAuth atomic.Bool
-	var seenBridgeHeader atomic.Bool
-	var observedCustomHeader atomic.Value
-	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		requests.Add(1)
-		if request.URL.Path != "/v1/messages" || request.URL.RawQuery != "beta=true" {
-			t.Errorf("request URL = %s", request.URL.String())
-		}
-		if request.Header.Get("Authorization") != "Bearer circles-secret" {
-			t.Errorf("authorization = %q", request.Header.Get("Authorization"))
-		}
-		if request.Header.Get("Authorization") == "Bearer incoming-claude-oauth-token" {
-			seenIncomingOAuth.Store(true)
-		}
-		if observed := observedCustomHeader.Load(); observed != nil {
-			if request.Header.Get(observed.(string)) != "" {
-				seenBridgeHeader.Store(true)
-			}
-		}
-		if request.Header.Get("X-Api-Key") != "" {
-			t.Errorf("x-api-key = %q", request.Header.Get("X-Api-Key"))
-		}
-		response.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(response, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
-	}))
-	defer upstream.Close()
-
-	bridge, err := startClaudeBridge(upstream.URL, "circles-secret", "", io.Discard)
-	if err != nil {
-		t.Fatal(err)
+func TestClaudeAccountHeaders(t *testing.T) {
+	if got := claudeAccountHeaders(""); got != "" {
+		t.Fatalf("empty account header = %q", got)
 	}
-	defer bridge.close()
-	observedCustomHeader.Store(bridge.headerName)
-	if bridge.headerName == "" || bridge.headerValue == "" {
-		t.Fatal("missing bridge auth header")
+	if got := claudeAccountHeaders("acct-01"); got != "X-Prism-Anthropic-Account: b64:YWNjdC0wMQ" {
+		t.Fatalf("account header = %q", got)
 	}
-
-	if bridge.url == "" || strings.HasPrefix(bridge.url, "https://") {
-		t.Fatal("bridge URL is invalid")
-	}
-
-	accountRequest, err := http.NewRequestWithContext(
-		t.Context(), http.MethodPost, bridge.url+"/v1/messages?beta=true", strings.NewReader("{}"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	accountRequest.Header.Set("Authorization", "Bearer incoming-claude-oauth-token")
-	accountRequest.Header.Set(bridge.headerName, "wrong-token")
-	wrong, err := http.DefaultClient.Do(accountRequest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := wrong.Body.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if wrong.StatusCode != http.StatusUnauthorized || requests.Load() != 0 {
-		t.Fatalf("wrong header status/requests = %d/%d", wrong.StatusCode, requests.Load())
-	}
-
-	unauthorizedRequest, err := http.NewRequestWithContext(
-		t.Context(), http.MethodPost, bridge.url+"/v1/messages?beta=true", strings.NewReader("{}"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	unauthorizedRequest.Header.Set("Content-Type", "application/json")
-	unauthorized, err := http.DefaultClient.Do(unauthorizedRequest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := unauthorized.Body.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if unauthorized.StatusCode != http.StatusUnauthorized || requests.Load() != 0 {
-		t.Fatalf("unauthorized status/requests = %d/%d", unauthorized.StatusCode, requests.Load())
-	}
-
-	request, err := http.NewRequestWithContext(
-		t.Context(), http.MethodPost, bridge.url+"/v1/messages?beta=true", strings.NewReader("{}"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.Header.Set(bridge.headerName, bridge.headerValue)
-	request.Header.Set("Authorization", "Bearer incoming-claude-oauth-token")
-	request.Header.Set("X-Api-Key", "remove-me")
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := io.ReadAll(response.Body)
-	response.Body.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "message_stop") {
-		t.Fatalf("response = %d %q", response.StatusCode, body)
-	}
-	if requests.Load() != 1 {
-		t.Fatalf("upstream requests = %d", requests.Load())
-	}
-	if seenIncomingOAuth.Load() {
-		t.Fatal("incoming OAuth authorization leaked upstream")
-	}
-	if seenBridgeHeader.Load() {
-		t.Fatalf("bridge header %q leaked upstream", bridge.headerName)
-	}
-}
-
-func TestClaudeBridgeProxyErrorsDoNotLogCredentials(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	target := upstream.URL
-	upstream.Close()
-	var stderr bytes.Buffer
-	bridge, err := startClaudeBridge(target, "circles-secret", "", &stderr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer bridge.close()
-
-	request, err := http.NewRequestWithContext(
-		t.Context(), http.MethodPost, bridge.url+"/v1/messages", strings.NewReader("{}"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.Header.Set(bridge.headerName, bridge.headerValue)
-	request.Header.Set("Authorization", "Bearer incoming-claude-oauth-token")
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := io.ReadAll(response.Body)
-	response.Body.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if response.StatusCode != http.StatusBadGateway {
-		t.Fatalf("status/body = %d/%q", response.StatusCode, body)
-	}
-	combined := stderr.String() + string(body)
-	for _, secret := range []string{
-		"incoming-claude-oauth-token",
-		"circles-secret",
-		bridge.headerValue,
-	} {
-		if strings.Contains(combined, secret) {
-			t.Fatalf("proxy error leaked a credential: %q", combined)
-		}
-	}
-}
-
-func TestClaudeBridgeInjectsAnthropicAccountHeader(t *testing.T) {
-	var requests atomic.Int32
-	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		requests.Add(1)
-		if request.Header.Get("X-Prism-Anthropic-Account") != "b64:YWNjdC0wMQ" {
-			t.Errorf("account header = %q", request.Header.Get("X-Prism-Anthropic-Account"))
-		}
-		if request.Header.Get("X-Custom") != "keep-me" {
-			t.Errorf("custom header = %q", request.Header.Get("X-Custom"))
-		}
-		response.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(response, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
-	}))
-	defer upstream.Close()
-
-	bridge, err := startClaudeBridge(upstream.URL, "circles-secret", "acct-01", io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer bridge.close()
-
-	request, err := http.NewRequestWithContext(
-		t.Context(), http.MethodPost, bridge.url+"/v1/messages?beta=true", strings.NewReader("{}"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.Header.Set(bridge.headerName, bridge.headerValue)
-	request.Header.Set("Authorization", "Bearer incoming-claude-oauth-token")
-	request.Header.Set("X-Custom", "keep-me")
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := io.ReadAll(response.Body)
-	response.Body.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "message_stop") {
-		t.Fatalf("response = %d %q", response.StatusCode, body)
-	}
-	if requests.Load() != 1 {
-		t.Fatalf("upstream requests = %d", requests.Load())
-	}
-}
-
-func TestClaudeBridgeEncodesUnicodeAnthropicAccountHeader(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.Header.Get("X-Prism-Anthropic-Account") != "b64:7YyAIOqzhOyglSDigJQg7JiI7Iuc" {
-			t.Errorf("account header = %q", request.Header.Get("X-Prism-Anthropic-Account"))
-		}
-		response.WriteHeader(http.StatusNoContent)
-	}))
-	defer upstream.Close()
-
-	bridge, err := startClaudeBridge(upstream.URL, "circles-secret", "팀 계정 — 예시", io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer bridge.close()
-
-	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, bridge.url+"/v1/messages", strings.NewReader("{}"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.Header.Set("Authorization", "Bearer incoming-claude-oauth-token")
-	request.Header.Set(bridge.headerName, bridge.headerValue)
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusNoContent {
-		t.Fatalf("status = %d", response.StatusCode)
+	if got := claudeAccountHeaders("팀 계정 — 예시"); got != "X-Prism-Anthropic-Account: b64:7YyAIOqzhOyglSDigJQg7JiI7Iuc" {
+		t.Fatalf("unicode account header = %q", got)
 	}
 }

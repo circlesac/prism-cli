@@ -179,8 +179,8 @@ browser handles account selection, SSO, and MFA. Prism does not import the
 credential used by an existing Claude Code login.
 
 This stores and refreshes Anthropic credentials for account and usage management.
-`prism claude` forwards requests through a local bridge and supplies its Prism
-bearer credential to Claude Code, so a separate Claude Code OAuth login is not
+`prism claude` points Claude Code directly at the Prism endpoint and supplies
+its Prism bearer credential, so a separate Claude Code OAuth login is not
 required.
 
 `prism anthropic auth remove` deletes the Prism grant and its routing/usage
