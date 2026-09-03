@@ -124,6 +124,8 @@ func TestClaudeEnvironmentUsesPrismBearerTokenWithoutLocalLogin(t *testing.T) {
 		"ANTHROPIC_VERTEX_PROJECT_ID=example-project",
 		"CLOUD_ML_REGION=us-east5",
 		"CLAUDE_CODE_OAUTH_TOKEN=existing-login-token",
+		"CLAUDECODE=1",
+		"CLAUDE_CODE_ENTRYPOINT=cli",
 	}, "http://127.0.0.1:12345", "X-Prism-Claude-Bridge-abc: 123456", "prism-secret")
 	joined := strings.Join(environment, "\n")
 	for _, unwanted := range []string{
@@ -139,6 +141,8 @@ func TestClaudeEnvironmentUsesPrismBearerTokenWithoutLocalLogin(t *testing.T) {
 		"us-east5",
 		"_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=0",
 		"existing-login-token",
+		"CLAUDECODE=",
+		"CLAUDE_CODE_ENTRYPOINT=",
 	} {
 		if strings.Contains(joined, unwanted) {
 			t.Fatalf("environment retained %q: %s", unwanted, joined)

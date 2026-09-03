@@ -98,7 +98,12 @@ func claudeEnvironment(environment []string, baseURL string, customHeaders strin
 			"ANTHROPIC_VERTEX_BASE_URL",
 			"ANTHROPIC_VERTEX_PROJECT_ID",
 			"CLOUD_ML_REGION",
-			"_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL":
+			"_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
+			// A parent Claude Code session exports these; a child launched with
+			// them set reuses the parent's credential path instead of the Prism
+			// bearer token and Prism rejects that request.
+			"CLAUDECODE",
+			"CLAUDE_CODE_ENTRYPOINT":
 			continue
 		}
 		filtered = append(filtered, entry)
