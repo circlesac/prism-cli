@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const defaultGeminiModel = "gemini-3.7-flash-low"
+const defaultGeminiModel = "gemini-3.8-flash-high"
 
 type geminiCLIExecutable struct {
 	path   string
@@ -182,7 +182,6 @@ or proxies its OAuth tokens. Common API-billing environment variables are
 removed before every run, and useG1Credits=false is persisted before launch
 to disable AI Credit fallback. If no session exists, agy starts its official
 Google sign-in flow automatically.
-The default model is gemini-3.7-flash-low; use --model gemini-3.1-pro-high for
-hard software-engineering and multi-step tool-use work. Other Antigravity CLI
+The default model is gemini-3.8-flash-high. Other Antigravity CLI
 arguments are passed through the Prism surface.`)
 }

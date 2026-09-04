@@ -12,8 +12,8 @@ import (
 	"testing"
 )
 
-func TestGeminiDefaultsTo37FlashLowAndPreservesExplicitModel(t *testing.T) {
-	if got := withDefaultGeminiModel([]string{"-p", "hello"}); !reflect.DeepEqual(got, []string{"--model", "gemini-3.7-flash-low", "-p", "hello"}) {
+func TestGeminiDefaultsTo38FlashHighAndPreservesExplicitModel(t *testing.T) {
+	if got := withDefaultGeminiModel([]string{"-p", "hello"}); !reflect.DeepEqual(got, []string{"--model", "gemini-3.8-flash-high", "-p", "hello"}) {
 		t.Fatalf("default args = %#v", got)
 	}
 	for _, args := range [][]string{{"--model", "gemini-3.1-pro-high", "-p", "hard"}, {"-m", "gemini-3.1-pro-high"}, {"--model=gemini-3.1-pro-high"}} {
@@ -28,7 +28,7 @@ func TestGeminiHelpDocumentsAntigravityContract(t *testing.T) {
 	if err := runGeminiCommand(context.Background(), []string{"--help"}, &output, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"official Antigravity CLI", "never copies", "API-billing environment", "useG1Credits=false", "sign-in flow automatically", "gemini-3.7-flash-low", "gemini-3.1-pro-high"} {
+	for _, value := range []string{"official Antigravity CLI", "never copies", "API-billing environment", "useG1Credits=false", "sign-in flow automatically", "gemini-3.8-flash-high"} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("help omitted %q: %s", value, output.String())
 		}
@@ -81,7 +81,7 @@ func TestRunAntigravityPassesStreamingAndTimeoutArgumentsAndScrubsAPIKeys(t *tes
 	if err := runAntigravity(context.Background(), geminiCLIExecutable{path: executable}, args, strings.NewReader(""), &output, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	want := "--model\ngemini-3.7-flash-low\n-p\nhello\n--output-format\nstream-json\n--print-timeout\n30m\n"
+	want := "--model\ngemini-3.8-flash-high\n-p\nhello\n--output-format\nstream-json\n--print-timeout\n30m\n"
 	if output.String() != want {
 		t.Fatalf("output = %q, want %q", output.String(), want)
 	}
