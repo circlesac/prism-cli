@@ -155,10 +155,10 @@ prism gemini -p 'Reply with exactly GEMINI_OK.'
 
 Before each run Prism removes common API-billing environment variables and persistently sets `useG1Credits=false` in Antigravity's shared configuration. If that safety setting cannot be written, Prism fails before launching agy. This disables AI Credit fallback without copying or changing agy's signed-in Google identity. `prism usage` and `prism gemini usage` read the live Antigravity quota through the same official CLI.
 
-The default model is `gemini-3.7-flash-low`. For harder software-engineering or multi-step tool-use tasks, select `gemini-3.1-pro-high` explicitly:
+The default model is the latest subscription model, `gemini-3.8-flash-high`:
 
 ```sh
-prism gemini --model gemini-3.1-pro-high -p 'Review this repository.'
+prism gemini --model gemini-3.8-flash-high -p 'Review this repository.'
 ```
 
 Antigravity CLI must be installed on `PATH`; Prism invokes it internally and keeps `prism gemini` as the user-facing command. When no local session exists, the first `prism gemini` run starts Antigravity's official Google sign-in flow.
