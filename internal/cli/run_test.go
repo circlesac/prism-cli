@@ -36,6 +36,30 @@ func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 	}
 }
 
+func TestTableRendersMultilineCells(t *testing.T) {
+	var output bytes.Buffer
+	printTable(&output, [][]string{{"NAME", "ERROR"}, {"Max 20x", "Login required\nRun: prism anthropic auth login"}}, nil, nil)
+	text := output.String()
+	if !strings.Contains(text, "│ Max 20x") || !strings.Contains(text, "│ Login required") || !strings.Contains(text, "│ Run: prism anthropic auth login") {
+		t.Fatalf("output = %q", text)
+	}
+}
+
+func TestUsagePrintsResetCreditsAndExpiry(t *testing.T) {
+	plan := "pro"
+	expires := "2026-10-04T02:15:58Z"
+	usage := api.ProviderUsage{Provider: "chatgpt", Accounts: []api.UsageAccount{{
+		Name: "person@example.com", Plan: &plan,
+		ResetCredits: &api.UsageResetCredits{AvailableCount: 2, Credits: []api.UsageResetCredit{{ExpiresAt: &expires}}},
+	}}}
+	var output bytes.Buffer
+	printUsageAt(&output, usage, time.Date(2026, 9, 5, 15, 0, 0, 0, time.FixedZone("KST", 9*60*60)))
+	text := output.String()
+	if !strings.Contains(text, "reset credits") || !strings.Contains(text, "│         2 │") || !strings.Contains(text, "2026-10-04 11:15 KST") {
+		t.Fatalf("output = %q", text)
+	}
+}
+
 func TestCombinedUsageShowsEveryProvider(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	originalChatGPT := fetchChatGPTUsage

@@ -31,6 +31,9 @@ prism usage
 Each provider is fetched independently, so an unavailable login does not hide
 usage from the other providers.
 
+ChatGPT accounts also show available earned reset credits and each credit's
+expiry time when the provider returns that detail.
+
 ## Non-interactive API calls
 
 Use `prism exec` when a shell pipeline or CI job needs one request through

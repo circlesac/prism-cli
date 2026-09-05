@@ -391,6 +391,17 @@ func printUsageTableAt(output io.Writer, providers []usageTableProvider, now tim
 				rows = appendUsageRow(rows, showProvider, providerName, name, rowPlan, limit.Name, limit.Window, formatUsagePercent(limit.UsedPercent), formatUsagePercent(limit.RemainingPercent), reset, usagePace(limit, account.Status, now))
 				providerName = ""
 			}
+			if account.ResetCredits != nil {
+				name := account.Name
+				rowPlan := plan
+				if len(account.Limits) > 0 {
+					name = ""
+					rowPlan = ""
+				}
+				reset := formatResetCreditExpiry(account.ResetCredits.Credits, now)
+				rows = appendUsageRow(rows, showProvider, providerName, name, rowPlan, "reset credits", "available", "-", strconv.Itoa(account.ResetCredits.AvailableCount), reset, "USE BEFORE EXPIRY")
+				providerName = ""
+			}
 		}
 	}
 	usedColumn := 4
@@ -398,6 +409,21 @@ func printUsageTableAt(output io.Writer, providers []usageTableProvider, now tim
 		usedColumn++
 	}
 	printTable(output, rows, map[int]bool{usedColumn: true, usedColumn + 1: true}, accountSeparators)
+}
+
+func formatResetCreditExpiry(credits []api.UsageResetCredit, now time.Time) string {
+	if len(credits) == 0 {
+		return "-"
+	}
+	values := make([]string, 0, len(credits))
+	for _, credit := range credits {
+		if credit.ExpiresAt == nil || *credit.ExpiresAt == "" {
+			values = append(values, "no expiry")
+			continue
+		}
+		values = append(values, formatUsageReset(*credit.ExpiresAt, now))
+	}
+	return strings.Join(values, "\n")
 }
 
 func appendUsageRow(rows [][]string, showProvider bool, values ...string) [][]string {
@@ -539,8 +565,10 @@ func printTable(output io.Writer, rows [][]string, rightAligned map[int]bool, se
 	widths := make([]int, len(rows[0]))
 	for _, row := range rows {
 		for column, value := range row {
-			row[column] = strings.NewReplacer("\r", " ", "\n", " ", "\t", " ").Replace(value)
-			widths[column] = max(widths[column], tableDisplayWidth(row[column]))
+			row[column] = strings.NewReplacer("\r", " ", "\t", " ").Replace(value)
+			for _, line := range strings.Split(row[column], "\n") {
+				widths[column] = max(widths[column], tableDisplayWidth(line))
+			}
 		}
 	}
 	printTableBorder(output, widths, "┌", "┬", "┐")
@@ -548,16 +576,27 @@ func printTable(output io.Writer, rows [][]string, rightAligned map[int]bool, se
 		if separatorsBefore[index] {
 			printTableBorder(output, widths, "├", "┼", "┤")
 		}
-		fmt.Fprint(output, "│")
-		for column, value := range row {
-			padding := widths[column] - tableDisplayWidth(value)
-			if rightAligned[column] && index > 0 {
-				fmt.Fprintf(output, " %s%s │", strings.Repeat(" ", padding), value)
-			} else {
-				fmt.Fprintf(output, " %s%s │", value, strings.Repeat(" ", padding))
-			}
+		height := 1
+		for _, value := range row {
+			height = max(height, len(strings.Split(value, "\n")))
 		}
-		fmt.Fprintln(output)
+		for lineIndex := 0; lineIndex < height; lineIndex++ {
+			fmt.Fprint(output, "│")
+			for column, value := range row {
+				lines := strings.Split(value, "\n")
+				line := ""
+				if lineIndex < len(lines) {
+					line = lines[lineIndex]
+				}
+				padding := widths[column] - tableDisplayWidth(line)
+				if rightAligned[column] && index > 0 {
+					fmt.Fprintf(output, " %s%s │", strings.Repeat(" ", padding), line)
+				} else {
+					fmt.Fprintf(output, " %s%s │", line, strings.Repeat(" ", padding))
+				}
+			}
+			fmt.Fprintln(output)
+		}
 		if index == 0 {
 			printTableBorder(output, widths, "├", "┼", "┤")
 		}

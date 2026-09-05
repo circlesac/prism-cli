@@ -35,19 +35,32 @@ type UsageLimit struct {
 	WindowSeconds    *int    `json:"window_seconds"`
 }
 
+type UsageResetCredit struct {
+	GrantedAt   *string `json:"granted_at"`
+	ExpiresAt   *string `json:"expires_at"`
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+}
+
+type UsageResetCredits struct {
+	AvailableCount int                `json:"available_count"`
+	Credits        []UsageResetCredit `json:"credits"`
+}
+
 type UsageError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
 type UsageAccount struct {
-	ID         string       `json:"id"`
-	Name       string       `json:"name"`
-	Plan       *string      `json:"plan"`
-	ObservedAt string       `json:"observed_at"`
-	Status     string       `json:"status"`
-	Limits     []UsageLimit `json:"limits"`
-	Error      *UsageError  `json:"error"`
+	ID           string             `json:"id"`
+	Name         string             `json:"name"`
+	Plan         *string            `json:"plan"`
+	ObservedAt   string             `json:"observed_at"`
+	Status       string             `json:"status"`
+	Limits       []UsageLimit       `json:"limits"`
+	ResetCredits *UsageResetCredits `json:"reset_credits,omitempty"`
+	Error        *UsageError        `json:"error"`
 }
 
 type ProviderUsage struct {
