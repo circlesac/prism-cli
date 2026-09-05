@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -49,6 +50,9 @@ type commonOptions struct {
 	profile           string
 	profileSet        bool
 	name              string
+	account           string
+	creditID          string
+	confirm           bool
 	providerAccountID string
 	ownerID           string
 	help              bool
@@ -144,7 +148,6 @@ func Run(
 		printUsage(stdout, usage)
 		return nil
 	}
-
 	client, err := prismClient(ctx, options)
 	if err != nil {
 		return err
@@ -181,6 +184,27 @@ func Run(
 			return err
 		}
 		printRemoveConfirmation(stdout, providerName, positionals[0])
+	case "reset":
+		idempotencyKey, err := newIdempotencyKey()
+		if err != nil {
+			return err
+		}
+		response, err := client.ConsumeChatGPTReset(ctx, api.ChatGPTResetRequest{
+			Account:        options.account,
+			CreditID:       options.creditID,
+			IdempotencyKey: idempotencyKey,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "ChatGPT reset for %s: %s", response.Account.Name, response.Outcome)
+		if response.WindowsReset != nil {
+			fmt.Fprintf(stdout, " (%d windows)", *response.WindowsReset)
+		}
+		if !response.UsageRefreshed {
+			fmt.Fprint(stdout, "; usage refresh unavailable")
+		}
+		fmt.Fprintln(stdout, ".")
 	}
 	return nil
 }
@@ -288,6 +312,22 @@ func validateCommand(provider string, command string, positionals []string, opti
 		}
 		if options.name != "" || options.providerAccountID != "" || options.ownerID != "" {
 			return errors.New("usage accepts only --profile")
+		}
+	case "reset":
+		if provider != "chatgpt" {
+			return fmt.Errorf("%s reset is not supported", provider)
+		}
+		if len(positionals) != 0 {
+			return fmt.Errorf("unexpected argument %q", positionals[0])
+		}
+		if strings.TrimSpace(options.account) == "" {
+			return errors.New("chatgpt reset requires --account <name-or-email>")
+		}
+		if !options.confirm {
+			return errors.New("chatgpt reset consumes a credit; pass --confirm to continue")
+		}
+		if options.name != "" || options.providerAccountID != "" || options.ownerID != "" {
+			return errors.New("chatgpt reset accepts only --profile, --account, --credit-id, and --confirm")
 		}
 	case "login":
 		if provider != "chatgpt" && provider != "anthropic" && provider != "copilot" && provider != "gemini" {
@@ -796,6 +836,24 @@ func parseCommonOptions(args []string) (commonOptions, []string, error) {
 			options.name = args[index]
 		case strings.HasPrefix(argument, "--name="):
 			options.name = strings.TrimPrefix(argument, "--name=")
+		case argument == "--account":
+			index++
+			if index >= len(args) || args[index] == "" {
+				return commonOptions{}, nil, errors.New("--account requires a value")
+			}
+			options.account = args[index]
+		case strings.HasPrefix(argument, "--account="):
+			options.account = strings.TrimPrefix(argument, "--account=")
+		case argument == "--credit-id":
+			index++
+			if index >= len(args) || args[index] == "" {
+				return commonOptions{}, nil, errors.New("--credit-id requires a value")
+			}
+			options.creditID = args[index]
+		case strings.HasPrefix(argument, "--credit-id="):
+			options.creditID = strings.TrimPrefix(argument, "--credit-id=")
+		case argument == "--confirm":
+			options.confirm = true
 		case argument == "--provider-account-id":
 			index++
 			if index >= len(args) || args[index] == "" {
@@ -821,6 +879,17 @@ func parseCommonOptions(args []string) (commonOptions, []string, error) {
 	return options, positionals, nil
 }
 
+func newIdempotencyKey() (string, error) {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return "", errors.New("could not generate reset idempotency key")
+	}
+	bytes[6] = (bytes[6] & 0x0f) | 0x40
+	bytes[8] = (bytes[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16]), nil
+}
+
 func printHelp(output io.Writer) {
 	fmt.Fprintln(output, `Prism provider credential manager and client configuration tool
 
@@ -832,6 +901,7 @@ Usage:
   prism cursor [--account <name-or-email>] [cursor arguments...]
   prism usage [--profile <name>]
   prism chatgpt usage [--profile <name>]
+  prism chatgpt reset --account <name-or-email> [--credit-id <id>] --confirm [--profile <name>]
   prism copilot usage [--profile <name>]
   prism opencode-go usage
   prism chatgpt auth login [--profile <name>]
@@ -875,5 +945,9 @@ proxy Antigravity OAuth credentials.`)
 }
 
 func printProviderUsageHelp(output io.Writer, provider string) {
+	if provider == "chatgpt" {
+		fmt.Fprintln(output, "Usage:\n  prism chatgpt usage [--profile <name>]\n  prism chatgpt reset --account <name-or-email> [--credit-id <id>] --confirm [--profile <name>]")
+		return
+	}
 	fmt.Fprintf(output, "Usage:\n  prism %s usage [--profile <name>]\n", provider)
 }

@@ -34,6 +34,17 @@ usage from the other providers.
 ChatGPT accounts also show available earned reset credits and each credit's
 expiry time when the provider returns that detail.
 
+To explicitly consume one reset credit for a named ChatGPT account, pass the
+confirmation flag. The account selector may be the displayed email, provider
+account ID, or Prism credential ID:
+
+```sh
+prism chatgpt reset --account person@example.com --confirm
+```
+
+This command never chooses an account implicitly. Prism forwards the request to
+ChatGPT with an idempotency key and refreshes that account's usage afterward.
+
 ## Non-interactive API calls
 
 Use `prism exec` when a shell pipeline or CI job needs one request through

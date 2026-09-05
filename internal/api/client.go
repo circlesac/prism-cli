@@ -63,6 +63,21 @@ type UsageAccount struct {
 	Error        *UsageError        `json:"error"`
 }
 
+type ChatGPTResetRequest struct {
+	Account        string `json:"account"`
+	CreditID       string `json:"credit_id,omitempty"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+}
+
+type ChatGPTResetResponse struct {
+	Provider       string             `json:"provider"`
+	Account        Credential         `json:"account"`
+	Outcome        string             `json:"outcome"`
+	WindowsReset   *int               `json:"windows_reset,omitempty"`
+	UsageRefreshed bool               `json:"usage_refreshed"`
+	ResetCredits   *UsageResetCredits `json:"reset_credits,omitempty"`
+}
+
 type ProviderUsage struct {
 	Provider string         `json:"provider"`
 	Accounts []UsageAccount `json:"accounts"`
@@ -113,6 +128,12 @@ func (c Client) Usage(ctx context.Context, provider string) (ProviderUsage, erro
 	var usage ProviderUsage
 	err := c.request(ctx, http.MethodGet, "/usage/"+url.PathEscape(provider), nil, &usage)
 	return usage, err
+}
+
+func (c Client) ConsumeChatGPTReset(ctx context.Context, request ChatGPTResetRequest) (ChatGPTResetResponse, error) {
+	var response ChatGPTResetResponse
+	err := c.request(ctx, http.MethodPost, "/usage/chatgpt/reset", request, &response)
+	return response, err
 }
 
 func (c Client) request(

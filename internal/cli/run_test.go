@@ -21,7 +21,7 @@ func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := stdout.String()
-	for _, command := range []string{"prism exec", "prism claude", "prism codex", "prism cursor", "prism gemini", "prism usage", "chatgpt usage", "anthropic auth login", "opencode-go usage", "auth login", "auth list", "auth remove"} {
+	for _, command := range []string{"prism exec", "prism claude", "prism codex", "prism cursor", "prism gemini", "prism usage", "chatgpt usage", "chatgpt reset", "anthropic auth login", "opencode-go usage", "auth login", "auth list", "auth remove"} {
 		if !strings.Contains(output, command) {
 			t.Fatalf("help did not contain %q", command)
 		}
@@ -32,6 +32,22 @@ func TestHelpDocumentsSupportedCommandsWithoutInternalDetails(t *testing.T) {
 	for _, internalDetail := range []string{"Vault", "CIRCLES_AUTH_TOKEN", "prism-dev", "E2EE", "application-plaintext"} {
 		if strings.Contains(output, internalDetail) {
 			t.Fatalf("help exposed internal detail %q", internalDetail)
+		}
+	}
+}
+
+func TestChatGPTResetRequiresExplicitAccountAndConfirmation(t *testing.T) {
+	for _, args := range [][]string{
+		{"chatgpt", "reset", "--confirm"},
+		{"chatgpt", "reset", "--account", "person@example.com"},
+	} {
+		var stdout, stderr bytes.Buffer
+		err := Run(context.Background(), args, &stdout, &stderr, "test")
+		if err == nil {
+			t.Fatalf("args %v unexpectedly succeeded", args)
+		}
+		if !strings.Contains(err.Error(), "chatgpt reset") {
+			t.Fatalf("args %v error = %v", args, err)
 		}
 	}
 }

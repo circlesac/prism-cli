@@ -81,6 +81,38 @@ func TestCredentialLifecycleUsesPrismAPIWithoutLeakingSecretsInURL(t *testing.T)
 	}
 }
 
+func TestConsumeChatGPTResetUsesExplicitAccountAndIdempotencyKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/usage/chatgpt/reset" {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		if request.Header.Get("Authorization") != "Bearer circles-key" {
+			t.Fatalf("authorization = %q", request.Header.Get("Authorization"))
+		}
+		var body ChatGPTResetRequest
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Account != "person@example.com" || body.CreditID != "credit-1" || body.IdempotencyKey != "request-1" {
+			t.Fatalf("body = %#v", body)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"provider":"chatgpt","account":{"id":"credential-1","name":"person@example.com"},"outcome":"reset","windows_reset":2,"usage_refreshed":true}`))
+	}))
+	defer server.Close()
+
+	client := Client{BaseURL: server.URL, Token: "circles-key", HTTPClient: server.Client()}
+	result, err := client.ConsumeChatGPTReset(context.Background(), ChatGPTResetRequest{
+		Account: "person@example.com", CreditID: "credit-1", IdempotencyKey: "request-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome != "reset" || result.WindowsReset == nil || *result.WindowsReset != 2 || !result.UsageRefreshed {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
 func TestInferenceMapsAPIPathAndProviderHeader(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/v1/messages" {
