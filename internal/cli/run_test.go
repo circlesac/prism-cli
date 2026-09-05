@@ -52,6 +52,16 @@ func TestChatGPTResetRequiresExplicitAccountAndConfirmation(t *testing.T) {
 	}
 }
 
+func TestChatGPTResetHelpShowsResetCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if err := Run(context.Background(), []string{"chatgpt", "reset", "--help"}, &stdout, &stderr, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "--confirm") || strings.Contains(stdout.String(), "auth login") {
+		t.Fatalf("output = %q", stdout.String())
+	}
+}
+
 func TestTableRendersMultilineCells(t *testing.T) {
 	var output bytes.Buffer
 	printTable(&output, [][]string{{"NAME", "ERROR"}, {"Max 20x", "Login required\nRun: prism anthropic auth login"}}, nil, nil)

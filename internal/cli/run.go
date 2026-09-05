@@ -119,7 +119,7 @@ func Run(
 		return err
 	}
 	if options.help {
-		if command == "usage" {
+		if command == "usage" || command == "reset" {
 			printProviderUsageHelp(stdout, providerName)
 		} else {
 			printProviderAuthHelp(stdout, providerName)
