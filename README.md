@@ -31,6 +31,43 @@ prism usage
 Each provider is fetched independently, so an unavailable login does not hide
 usage from the other providers.
 
+Add `--json` to print machine-readable output instead of the table. The document
+has `generated_at` (RFC 3339, UTC) and a `providers` array in the same order as
+the table, where each entry has `provider`, `display_name`, `accounts`, and
+`error`. A provider that could not be fetched has an empty `accounts` array and
+an `error` object; every other provider has `error: null`. The same flag works
+for a single provider, such as `prism chatgpt usage --json`, which prints one
+provider object:
+
+```json
+{
+  "provider": "chatgpt",
+  "display_name": "ChatGPT",
+  "accounts": [
+    {
+      "id": "cred_example",
+      "name": "person@example.com",
+      "plan": "pro",
+      "observed_at": "2026-09-17T08:30:00Z",
+      "status": "fresh",
+      "limits": [
+        {
+          "name": "default",
+          "window": "7d",
+          "used_percent": 12.5,
+          "remaining_percent": 87.5,
+          "limit_reached": false,
+          "reset_at": "2026-09-22T00:00:00Z",
+          "window_seconds": 604800
+        }
+      ],
+      "error": null
+    }
+  ],
+  "error": null
+}
+```
+
 ChatGPT accounts also show available earned reset credits and each credit's
 expiry time when the provider returns that detail.
 

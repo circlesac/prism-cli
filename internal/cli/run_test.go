@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -652,5 +653,184 @@ func TestOtherProviderRemovalMessageIsUnchanged(t *testing.T) {
 	printRemoveConfirmation(&output, "chatgpt", "01j00000000000000000000002")
 	if output.String() != "Removed chatgpt credential 01j00000000000000000000002.\n" {
 		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestCombinedUsageJSONReportsAccountsAndProviderErrors(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	originalChatGPT := fetchChatGPTUsage
+	originalAnthropic := fetchAnthropicUsage
+	originalCopilot := fetchCopilotUsage
+	originalOpenCode := fetchOpenCodeGoUsage
+	originalCursor := fetchCursorUsage
+	originalGemini := fetchGeminiUsage
+	defer func() {
+		fetchChatGPTUsage = originalChatGPT
+		fetchAnthropicUsage = originalAnthropic
+		fetchCopilotUsage = originalCopilot
+		fetchOpenCodeGoUsage = originalOpenCode
+		fetchCursorUsage = originalCursor
+		fetchGeminiUsage = originalGemini
+	}()
+	plan := "pro"
+	resetAt := "2026-09-22T00:00:00Z"
+	fetchChatGPTUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{Provider: "chatgpt", Accounts: []api.UsageAccount{{
+			ID: "01j00000000000000000000001", Name: "person@example.com", Plan: &plan,
+			ObservedAt: "2026-09-17T08:30:00Z", Status: "fresh",
+			Limits: []api.UsageLimit{{Name: "default", Window: "7d", UsedPercent: 12.5, RemainingPercent: 87.5, ResetAt: &resetAt}},
+		}}}, nil
+	}
+	fetchAnthropicUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{Provider: "anthropic"}, nil
+	}
+	fetchCopilotUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{Provider: "copilot"}, nil
+	}
+	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("OpenCode returned malformed Go usage data")
+	}
+	fetchCursorUsage = func(context.Context, prismcursor.UsageOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{Provider: "cursor"}, nil
+	}
+	fetchGeminiUsage = func(context.Context) (api.ProviderUsage, error) {
+		return api.ProviderUsage{Provider: "gemini"}, nil
+	}
+
+	var output bytes.Buffer
+	if err := Run(context.Background(), []string{"usage", "--json"}, &output, &bytes.Buffer{}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "┌") || !strings.HasSuffix(output.String(), "}\n") {
+		t.Fatalf("output = %q", output.String())
+	}
+	var document usageJSONDocument
+	if err := json.Unmarshal(output.Bytes(), &document); err != nil {
+		t.Fatalf("output = %q, error = %v", output.String(), err)
+	}
+	if _, err := time.Parse(time.RFC3339, document.GeneratedAt); err != nil {
+		t.Fatalf("generated_at = %q", document.GeneratedAt)
+	}
+	names := make([]string, 0, len(document.Providers))
+	for _, provider := range document.Providers {
+		names = append(names, provider.Provider+"="+provider.DisplayName)
+	}
+	want := "chatgpt=ChatGPT anthropic=Claude copilot=Copilot opencode-go=OpenCode cursor=Cursor gemini=Gemini"
+	if strings.Join(names, " ") != want {
+		t.Fatalf("providers = %q", strings.Join(names, " "))
+	}
+	chatGPT := document.Providers[0]
+	if chatGPT.Error != nil || len(chatGPT.Accounts) != 1 {
+		t.Fatalf("chatgpt = %+v", chatGPT)
+	}
+	limit := chatGPT.Accounts[0].Limits[0]
+	if chatGPT.Accounts[0].Name != "person@example.com" || limit.UsedPercent != 12.5 || limit.ResetAt == nil || *limit.ResetAt != resetAt {
+		t.Fatalf("chatgpt account = %+v", chatGPT.Accounts[0])
+	}
+	openCode := document.Providers[3]
+	if openCode.Error == nil || openCode.Error.Code != "usage_unavailable" || openCode.Error.Message != "OpenCode returned malformed Go usage data" {
+		t.Fatalf("opencode-go = %+v", openCode)
+	}
+	if openCode.Accounts == nil || len(openCode.Accounts) != 0 || !strings.Contains(output.String(), `"accounts": []`) {
+		t.Fatalf("opencode-go accounts = %#v, output = %q", openCode.Accounts, output.String())
+	}
+}
+
+func TestCombinedUsageJSONStillPrintsWhenEveryProviderFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	originalChatGPT := fetchChatGPTUsage
+	originalAnthropic := fetchAnthropicUsage
+	originalCopilot := fetchCopilotUsage
+	originalOpenCode := fetchOpenCodeGoUsage
+	originalCursor := fetchCursorUsage
+	originalGemini := fetchGeminiUsage
+	defer func() {
+		fetchChatGPTUsage = originalChatGPT
+		fetchAnthropicUsage = originalAnthropic
+		fetchCopilotUsage = originalCopilot
+		fetchOpenCodeGoUsage = originalOpenCode
+		fetchCursorUsage = originalCursor
+		fetchGeminiUsage = originalGemini
+	}()
+	fetchChatGPTUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("unavailable")
+	}
+	fetchAnthropicUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("unavailable")
+	}
+	fetchCopilotUsage = func(context.Context, commonOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("unavailable")
+	}
+	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("unavailable")
+	}
+	fetchCursorUsage = func(context.Context, prismcursor.UsageOptions) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("unavailable")
+	}
+	fetchGeminiUsage = func(context.Context) (api.ProviderUsage, error) {
+		return api.ProviderUsage{}, errors.New("unavailable")
+	}
+
+	var output bytes.Buffer
+	err := Run(context.Background(), []string{"usage", "--json"}, &output, &bytes.Buffer{}, "test")
+	if err == nil || err.Error() != "usage is unavailable for ChatGPT, Claude, Copilot, OpenCode, Cursor, and Gemini" {
+		t.Fatalf("error = %v", err)
+	}
+	var document usageJSONDocument
+	if err := json.Unmarshal(output.Bytes(), &document); err != nil {
+		t.Fatalf("output = %q, error = %v", output.String(), err)
+	}
+	for _, provider := range document.Providers {
+		if provider.Error == nil || provider.Error.Code != "usage_unavailable" || len(provider.Accounts) != 0 {
+			t.Fatalf("provider %s = %+v", provider.Provider, provider)
+		}
+	}
+}
+
+func TestProviderUsageJSONPrintsASingleProviderObject(t *testing.T) {
+	original := fetchOpenCodeGoUsage
+	defer func() { fetchOpenCodeGoUsage = original }()
+	plan := "Go"
+	fetchOpenCodeGoUsage = func(context.Context) (api.ProviderUsage, error) {
+		return api.ProviderUsage{Provider: "opencode-go", Accounts: []api.UsageAccount{{
+			ID: "wrk_EXAMPLE", Name: "-", Plan: &plan, Status: "fresh",
+			Limits: []api.UsageLimit{{Name: "rolling", Window: "5h", UsedPercent: 2, RemainingPercent: 98}},
+		}}}, nil
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CIRCLES_AUTH_TOKEN", "")
+	var output bytes.Buffer
+	if err := Run(context.Background(), []string{"opencode-go", "usage", "--json"}, &output, &bytes.Buffer{}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "┌") {
+		t.Fatalf("output = %q", output.String())
+	}
+	var provider usageJSONProvider
+	if err := json.Unmarshal(output.Bytes(), &provider); err != nil {
+		t.Fatalf("output = %q, error = %v", output.String(), err)
+	}
+	if provider.Provider != "opencode-go" || provider.DisplayName != "OpenCode" || provider.Error != nil {
+		t.Fatalf("provider = %+v", provider)
+	}
+	if len(provider.Accounts) != 1 || provider.Accounts[0].ID != "wrk_EXAMPLE" || provider.Accounts[0].Limits[0].RemainingPercent != 98 {
+		t.Fatalf("accounts = %+v", provider.Accounts)
+	}
+}
+
+func TestJSONIsRejectedOutsideUsageCommands(t *testing.T) {
+	for _, args := range [][]string{
+		{"chatgpt", "auth", "list", "--json"},
+		{"chatgpt", "reset", "--account", "person@example.com", "--confirm", "--json"},
+		{"anthropic", "auth", "login", "--json"},
+	} {
+		var stdout, stderr bytes.Buffer
+		err := Run(context.Background(), args, &stdout, &stderr, "test")
+		if err == nil || !strings.Contains(err.Error(), "--json is accepted only by") {
+			t.Fatalf("args %v error = %v", args, err)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("args %v printed %q", args, stdout.String())
+		}
 	}
 }
