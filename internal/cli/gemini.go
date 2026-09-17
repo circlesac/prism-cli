@@ -27,10 +27,11 @@ func isGeminiCLIInvocation([]string) bool {
 
 func runGeminiCommand(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) > 0 && args[0] == "usage" {
-		if len(args) != 1 {
-			return errors.New("usage: prism gemini usage")
+		asJSON := len(args) == 2 && args[1] == "--json"
+		if len(args) != 1 && !asJSON {
+			return errors.New("usage: prism gemini usage [--json]")
 		}
-		return runGeminiUsage(ctx, stdout, stderr)
+		return runGeminiUsage(ctx, stdout, stderr, asJSON)
 	}
 	if len(args) > 0 && args[0] == "auth" {
 		return errors.New("Antigravity CLI signs in automatically on the first 'prism gemini' run; it has no auth subcommand")
@@ -174,7 +175,7 @@ func withDefaultGeminiModel(args []string) []string {
 func printGeminiHelp(output io.Writer) {
 	_, _ = fmt.Fprintln(output, `Usage:
   prism gemini [Antigravity CLI arguments...]
-  prism gemini usage
+  prism gemini usage [--json]
 
 Runs the official Antigravity CLI (agy) inside the Prism command surface.
 The signed-in Google subscription remains managed by agy; Prism never copies

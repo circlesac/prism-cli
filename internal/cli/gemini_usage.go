@@ -34,10 +34,13 @@ type antigravityUsageEnvelope struct {
 
 var fetchGeminiUsage = fetchAntigravityUsage
 
-func runGeminiUsage(ctx context.Context, stdout io.Writer, stderr io.Writer) error {
+func runGeminiUsage(ctx context.Context, stdout io.Writer, stderr io.Writer, asJSON bool) error {
 	usage, err := fetchGeminiUsage(ctx)
 	if err != nil {
 		return err
+	}
+	if asJSON {
+		return printUsageJSON(stdout, usageJSONProviderFor("gemini", usage, nil))
 	}
 	printUsage(stdout, usage)
 	return nil

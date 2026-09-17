@@ -55,6 +55,7 @@ type commonOptions struct {
 	confirm           bool
 	providerAccountID string
 	ownerID           string
+	json              bool
 	help              bool
 }
 
@@ -145,6 +146,9 @@ func Run(
 		if err != nil {
 			return err
 		}
+		if options.json {
+			return printUsageJSON(stdout, usageJSONProviderFor(providerName, usage, nil))
+		}
 		printUsage(stdout, usage)
 		return nil
 	}
@@ -223,14 +227,14 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 		return err
 	}
 	if options.help {
-		fmt.Fprintln(output, "Usage:\n  prism usage [--profile <name>]")
+		fmt.Fprintln(output, "Usage:\n  prism usage [--profile <name>] [--json]")
 		return nil
 	}
 	if len(positionals) != 0 {
 		return fmt.Errorf("unexpected argument %q", positionals[0])
 	}
 	if options.name != "" || options.providerAccountID != "" || options.ownerID != "" {
-		return errors.New("usage accepts only --profile")
+		return errors.New("usage accepts only --profile and --json")
 	}
 
 	type usageResult struct {
@@ -269,32 +273,47 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 	}()
 
 	results := []struct {
-		name   string
-		result usageResult
+		provider string
+		result   usageResult
 	}{
-		{name: "ChatGPT", result: <-chatGPTResults},
-		{name: "Claude", result: <-anthropicResults},
-		{name: "Copilot", result: <-copilotResults},
-		{name: "OpenCode", result: <-openCodeResults},
-		{name: "Cursor", result: <-cursorResults},
-		{name: "Gemini", result: <-geminiResults},
+		{provider: "chatgpt", result: <-chatGPTResults},
+		{provider: "anthropic", result: <-anthropicResults},
+		{provider: "copilot", result: <-copilotResults},
+		{provider: "opencode-go", result: <-openCodeResults},
+		{provider: "cursor", result: <-cursorResults},
+		{provider: "gemini", result: <-geminiResults},
 	}
 	succeeded := 0
 	var failures []string
 	providers := make([]usageTableProvider, 0, len(results))
+	document := usageJSONDocument{
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		Providers:   make([]usageJSONProvider, 0, len(results)),
+	}
 	for _, provider := range results {
+		displayName := usageProviderDisplayName(provider.provider)
 		providers = append(providers, usageTableProvider{
-			name:  provider.name,
+			name:  displayName,
 			usage: provider.result.usage,
 			err:   provider.result.err,
 		})
+		document.Providers = append(
+			document.Providers,
+			usageJSONProviderFor(provider.provider, provider.result.usage, provider.result.err),
+		)
 		if provider.result.err != nil {
-			failures = append(failures, provider.name)
+			failures = append(failures, displayName)
 			continue
 		}
 		succeeded++
 	}
-	printUsageTableAt(output, providers, time.Now(), true)
+	if options.json {
+		if err := printUsageJSON(output, document); err != nil {
+			return err
+		}
+	} else {
+		printUsageTableAt(output, providers, time.Now(), true)
+	}
 	if succeeded == 0 {
 		return fmt.Errorf("usage is unavailable for %s", joinNames(failures))
 	}
@@ -302,6 +321,9 @@ func runCombinedUsage(ctx context.Context, args []string, output io.Writer) erro
 }
 
 func validateCommand(provider string, command string, positionals []string, options commonOptions) error {
+	if options.json && command != "usage" {
+		return errors.New("--json is accepted only by 'prism usage' and 'prism <provider> usage'")
+	}
 	switch command {
 	case "usage":
 		if provider != "chatgpt" && provider != "anthropic" && provider != "copilot" && provider != "opencode-go" && provider != "gemini" {
@@ -311,7 +333,7 @@ func validateCommand(provider string, command string, positionals []string, opti
 			return fmt.Errorf("unexpected argument %q", positionals[0])
 		}
 		if options.name != "" || options.providerAccountID != "" || options.ownerID != "" {
-			return errors.New("usage accepts only --profile")
+			return errors.New("usage accepts only --profile and --json")
 		}
 	case "reset":
 		if provider != "chatgpt" {
@@ -854,6 +876,8 @@ func parseCommonOptions(args []string) (commonOptions, []string, error) {
 			options.creditID = strings.TrimPrefix(argument, "--credit-id=")
 		case argument == "--confirm":
 			options.confirm = true
+		case argument == "--json":
+			options.json = true
 		case argument == "--provider-account-id":
 			index++
 			if index >= len(args) || args[index] == "" {
@@ -899,11 +923,11 @@ Usage:
   prism claude [--account <alias-or-id>] [claude arguments...]
   prism codex enable|disable|status
   prism cursor [--account <name-or-email>] [cursor arguments...]
-  prism usage [--profile <name>]
-  prism chatgpt usage [--profile <name>]
+  prism usage [--profile <name>] [--json]
+  prism chatgpt usage [--profile <name>] [--json]
   prism chatgpt reset --account <name-or-email> [--credit-id <id>] --confirm [--profile <name>]
-  prism copilot usage [--profile <name>]
-  prism opencode-go usage
+  prism copilot usage [--profile <name>] [--json]
+  prism opencode-go usage [--json]
   prism chatgpt auth login [--profile <name>]
   prism anthropic auth login [--profile <name>]
   prism claude login [--profile <name>]
@@ -946,8 +970,8 @@ proxy Antigravity OAuth credentials.`)
 
 func printProviderUsageHelp(output io.Writer, provider string) {
 	if provider == "chatgpt" {
-		fmt.Fprintln(output, "Usage:\n  prism chatgpt usage [--profile <name>]\n  prism chatgpt reset --account <name-or-email> [--credit-id <id>] --confirm [--profile <name>]")
+		fmt.Fprintln(output, "Usage:\n  prism chatgpt usage [--profile <name>] [--json]\n  prism chatgpt reset --account <name-or-email> [--credit-id <id>] --confirm [--profile <name>]")
 		return
 	}
-	fmt.Fprintf(output, "Usage:\n  prism %s usage [--profile <name>]\n", provider)
+	fmt.Fprintf(output, "Usage:\n  prism %s usage [--profile <name>] [--json]\n", provider)
 }

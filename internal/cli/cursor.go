@@ -46,12 +46,24 @@ func runCursorCommand(ctx context.Context, args []string, stdout io.Writer, stde
 		if err != nil {
 			return err
 		}
-		if len(remaining) != 0 {
-			return errors.New("usage: prism cursor usage [--account <name-or-email>]")
+		asJSON := false
+		unexpected := make([]string, 0, len(remaining))
+		for _, argument := range remaining {
+			if argument == "--json" {
+				asJSON = true
+				continue
+			}
+			unexpected = append(unexpected, argument)
+		}
+		if len(unexpected) != 0 {
+			return errors.New("usage: prism cursor usage [--account <name-or-email>] [--json]")
 		}
 		usage, err := fetchAllCursorUsage(ctx, account)
 		if err != nil {
 			return err
+		}
+		if asJSON {
+			return printUsageJSON(stdout, usageJSONProviderFor("cursor", usage, nil))
 		}
 		printUsage(stdout, usage)
 		return nil
@@ -398,7 +410,7 @@ func printCursorHelp(output io.Writer) {
   prism cursor auth list|remove <name-or-email>
   prism cursor status
   prism cursor models
-  prism cursor usage [--account <name-or-email>]
+  prism cursor usage [--account <name-or-email>] [--json]
   prism cursor [--account <name-or-email>] [Cursor Agent arguments...]
 
 Install and run the official Cursor Agent without replacing ~/.local/bin/agent.
