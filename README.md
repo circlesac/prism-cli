@@ -5,14 +5,11 @@ Connect LLM provider accounts and clients to Prism.
 ## Install
 
 ```sh
-brew install circlesac/tap/crcl circlesac/tap/prism
-```
-
-If `crcl` is already installed, Prism CLI can also be installed directly:
-
-```sh
+brew install circlesac/tap/crcl
 curl -fsSL https://github.com/circlesac/prism-cli/releases/latest/download/install.sh | sh
 ```
+
+`circlesac/tap/prism` on Homebrew is now the Prism menu bar app, which brings its own `prism` command; this CLI is installed with the script above.
 
 ## Sign in
 
