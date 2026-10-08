@@ -1,5 +1,13 @@
 # Prism CLI
 
+> **Archived.** This Go CLI is no longer maintained or released. Its successor is the Prism menu bar app for macOS, which brings its own `prism` command:
+>
+> ```sh
+> brew install circlesac/tap/prism
+> ```
+>
+> The releases below stay available, and `install.sh` still installs the last one (26.9.7). On archiving: releases are kept; the CI and release workflows no longer run; the repository's two release-build secrets are kept unused in case it is restored.
+
 Connect LLM provider accounts and clients to Prism.
 
 ## Install
